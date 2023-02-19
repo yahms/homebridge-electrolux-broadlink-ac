@@ -1,5 +1,4 @@
 {
-  "private": true,
   "displayName": "Homebridge Electrolux Broadlink AC",
   "name": "homebridge-electrolux-broadlink-ac",
   "version": "1.0.0",
