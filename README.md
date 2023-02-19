@@ -3,7 +3,12 @@
 
 For Electrolux Family ACs that use the Broadlink module internally.
 
-## fan speed
+## Operation
+
+should be able to use the Gui in Homebridge to add. theres no configurable options at this point.
+
+
+### note re fan speed
 
 fan speed in apple home is a %
 
