@@ -10,6 +10,10 @@ should be able to use the Gui in Homebridge to add. theres no configurable optio
 
 ### note re fan speed
 
+adds 3 buttons, one for an 'Auto' mode, one for mould proof, one for turning the LED display and /Beep on / off
+
+### note re fan speed
+
 fan speed in apple home is a %
 
 on these ACs there is 6 settings so it maps this way:
