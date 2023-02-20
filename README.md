@@ -7,8 +7,11 @@ For Electrolux Family ACs that use the Broadlink module internally.
 
 should be able to use the Gui in Homebridge to add. theres no configurable options at this point.
 
+### note re status
 
-### note re fan speed
+plugin broken atm, stops working after a restart. removing accessory from cache should fix it
+
+### note re buttons
 
 adds 3 buttons, one for an 'Auto' mode, one for mould proof, one for turning the LED display and /Beep on / off
 
