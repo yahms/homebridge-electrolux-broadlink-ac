@@ -1,8 +1,5 @@
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { ElectroluxBroadlinkACPlatform } from './platform';
-// import Device from 'node-broadlink/dist/device';
-import struct from 'node-broadlink/dist/struct';
-// import { ServerResponse } from 'http';
 
 export enum fanSpeed {
   AUTO = 0,
@@ -28,24 +25,22 @@ export interface ElectroluxState<T = boolean> {
   // boolean
   ac_pwr: number;                    // Power
   scrdisp: number;                   // LED display
-  qtmode: T;                    // beep on (tied to scrdisp)
-  ac_vdir: number;                   // vswing
+  qtmode: number;                    // beep on (tied to scrdisp, so kinda pointless)
+  ac_vdir: number;                   // vertical swing
   mldprf: number;                    // self clean
 
-  // variables
+  // non boolean variables
   ac_mark: number;              // Fan speed auto 0, low 1, med 2, high 3, turbo 4, quiet 5
   ac_mode: number;              // AC Mode cool 0, heat 1, dry 2, fan 3, auto 4, heat_8 6
   temp: number;                 // Target temp
   envtemp: number;              // Ambient temp
 
+  // purely informational
   ac_heaterstatus: T;
   ac_indoorfanstatus: T;
   ac_compressorstatus: T;
-
   modelnumber: string;
 }
-
-
 
 export class electroluxACAccessory {
   private service: Service;
@@ -53,9 +48,12 @@ export class electroluxACAccessory {
   private swDisplay: Service;
   private swAuto: Service;
 
-
   public TYPE = 'ELECTROLUX_OEM';
   public deviceType = 0x4f9b;
+  public staleTimeout = 200;      // how old the stored AC state can get
+  public updateInterval = 5000;   // interval for async updates
+  public nextACRequestTime = 1;
+  public lastACState:ElectroluxState | undefined = undefined;
 
 
   constructor(
@@ -65,12 +63,25 @@ export class electroluxACAccessory {
 
 
 
+
+    if (this.platform.config.minRequestFrequency) {
+      this.staleTimeout = this.platform.config.minRequestFrequency;
+      this.platform.log.debug('Setting staleTimeout from config.json :', this.platform.config.minRequestFrequency);
+    }
+
+
+    if (this.platform.config.UpdateFrequency) {
+      this.updateInterval = this.platform.config.UpdateFrequency;
+      this.platform.log.debug('Setting updateFrequency from config.json :', this.platform.config.UpdateFrequency);
+    }
+
+    this.getModel().then(value => accessory.context.model = value);
+
     // set accessory information
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
       .setCharacteristic(this.platform.Characteristic.Manufacturer, accessory.context.manufacturer as string)
-      .setCharacteristic(this.platform.Characteristic.Model, accessory.context.model as string)
+      .setCharacteristic(this.platform.Characteristic.Model, accessory.context.model)
       .setCharacteristic(this.platform.Characteristic.SerialNumber, accessory.context.serial as string);
-
 
 
     // get the  service if it exists, otherwise create a new  service
@@ -80,17 +91,19 @@ export class electroluxACAccessory {
 
     // add additional switches for clean/display/auto
     this.swClean = this.accessory.getService('Self Clean') ||
-    this.accessory.addService(this.platform.Service.Switch, 'Self Clean', 'selfClean');
+    this.accessory.addService(this.platform.Service.Switch, 'Self Clean', 'swClean');
+    this.swClean.setCharacteristic(this.platform.Characteristic.Name, 'Self Clean');
 
     this.swDisplay = this.accessory.getService('LED Display') ||
-    this.accessory.addService(this.platform.Service.Switch, 'LED Display', 'display');
+    this.accessory.addService(this.platform.Service.Switch, 'LED Display', 'swDisplay');
+    this.swDisplay.setCharacteristic(this.platform.Characteristic.Name, 'LED Display');
 
-    this.swAuto = this.accessory.getService('AUTO') ||
-    this.accessory.addService(this.platform.Service.Switch, 'AUTO', 'auto');
+    this.swAuto = this.accessory.getService('Auto') ||
+    this.accessory.addService(this.platform.Service.Switch, 'Auto', 'swAuto');
+    this.swAuto.setCharacteristic(this.platform.Characteristic.Name, 'Auto');
 
     // default name on the Home app
     this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.name);
-
 
     this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).props.minValue = 17;
     this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).props.maxValue = 30;
@@ -99,11 +112,6 @@ export class electroluxACAccessory {
 
     this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).props.minStep = 1;
     this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature).props.minStep = 1;
-
-
-
-    // each service must implement at-minimum the "required characteristics" for the given service type
-    // see https://developers.homebridge.io/#/service/Lightbulb
 
 
     // create handlers for required characteristics
@@ -137,6 +145,7 @@ export class electroluxACAccessory {
       .onGet(this.handleGetTargetTemp.bind(this))
       .onSet(this.handleSetTargetTemp.bind(this));
 
+    // additional handlers for the extra switches
     this.swClean.getCharacteristic(this.platform.Characteristic.On)
       .onGet(this.handleGetSelfClean.bind(this))
       .onSet(this.handleSetSelfClean.bind(this));
@@ -148,11 +157,13 @@ export class electroluxACAccessory {
     this.swAuto.getCharacteristic(this.platform.Characteristic.On)
       .onGet(this.handleGetAuto.bind(this))
       .onSet(this.handleSetAuto.bind(this));
-
   }
 
+  // get a fresh ElectroluxState object, then update all characteristics
+  public async updateAllNow(status: ElectroluxState): Promise<void> {
+    // force getState() to update
+    this.nextACRequestTime = Date.now();
 
-  public async updateAll(status: ElectroluxState): Promise<void> {
     this.service.getCharacteristic(this.platform.Characteristic.
       Active).updateValue(status.ac_pwr);
 
@@ -177,38 +188,35 @@ export class electroluxACAccessory {
     this.service.getCharacteristic(this.platform.Characteristic.
       HeatingThresholdTemperature).updateValue(status.temp);
 
-    this.swAuto.getCharacteristic(this.platform.Characteristic.
-      On).updateValue(this.fromACisAutoMode(status));
+    this.swClean.getCharacteristic(this.platform.Characteristic.
+      On).updateValue(status.mldprf);
+
 
     this.swDisplay.getCharacteristic(this.platform.Characteristic.
       On).updateValue(status.scrdisp);
 
-    this.swClean.getCharacteristic(this.platform.Characteristic.
-      On).updateValue(status.mldprf);
-
+    this.swAuto.getCharacteristic(this.platform.Characteristic.
+      On).updateValue(this.fromACisAutoMode(status));
   }
 
-
-
   public setState(state: Partial<ElectroluxState>): Promise<ElectroluxState> {
+    this.platform.log.debug('setState() called');
     return new Promise((resolve, reject) => {
       this.accessory.context.device.sendPacket(this.encode(state))
         .then((response) => {
           const decryptedResponse = this.accessory.context.device.decrypt(response);
-          this.platform.log.debug('\n setState() request packet  hex :', this.encode(state).toString('hex'));
-          this.platform.log.debug('\n setState() request packet  hex :', this.encode(state).toString('hex'));
-          this.platform.log.debug('\n setState() request packet  asc :', this.encode(state).toString('ascii'));
 
-          this.platform.log.debug('\n setState() response packet  hex :', decryptedResponse.toString('hex'));
-          this.platform.log.debug('\n setState() response packet  asc :', decryptedResponse.toString('ascii'));
 
-          resolve(this.decode(decryptedResponse));
+          // set the time of the next check
+          this.nextACRequestTime = Date.now() + this.staleTimeout;
+          this.lastACState = (this.decode(decryptedResponse));
+
+          this.platform.log.debug('\n setState() called, updated cache and returning this JSON from AC:\n',
+            JSON.stringify(this.lastACState));
+
+          resolve(this.lastACState);
         })
         .catch((err) => {
-
-          this.platform.log.debug('\n setState() send packet  hex :', this.encode(state).toString('hex'));
-          this.platform.log.debug('\n setState() send packet  asc :', this.encode(state).toString('ascii'));
-
           reject(err);
         });
     });
@@ -216,41 +224,47 @@ export class electroluxACAccessory {
 
 
   // this returns the state in the the form of an object
+
+  // modified to only sendPacket if the the ElectroluxState object
+  // in 'this.lastACState' has passed the stale timeout
+
   public getState(): Promise<ElectroluxState> {
+    this.platform.log.debug('getState() called');
     return new Promise((resolve, reject) => {
-      this.accessory.context.device.sendPacket(this.encode({}))
-        .then((response) => {
-          const decryptedResponse = this.accessory.context.device.decrypt(response);
-          this.platform.log.debug('\n getState() request packet  hex :', this.encode({}).toString('hex'));
-          this.platform.log.debug('\n getState() request packet  asc :', this.encode({}).toString('ascii'));
-          this.platform.log.debug('\n getState() response packet  hex :', decryptedResponse.toString('hex'));
-          this.platform.log.debug('\n getState() response packet  asc :', decryptedResponse.toString('ascii'));
+      // if the next requiest time is in the future AND it exists,
+      if ((this.nextACRequestTime > Date.now()) && this.lastACState ) {
+        this.platform.log.debug('\n getState() called, returning this JSON from cache:\n',
+          JSON.stringify(this.lastACState));
+        resolve(this.lastACState);
+      // else
+      } else {
+        this.accessory.context.device.sendPacket(this.encode({}))
+          .then((response) => {
+            const decryptedResponse = this.accessory.context.device.decrypt(response);
 
-          resolve(this.decode(decryptedResponse));
-        })
-        .catch((err) => {
+            // last time we got the electrolux state
+            this.nextACRequestTime = Date.now() + this.staleTimeout;
+            this.lastACState = (this.decode(decryptedResponse));
 
-          this.platform.log.debug('\n getState() request packet  hex :', this.encode({}).toString('hex'));
-          this.platform.log.debug('\n getState() request packet  asc :', this.encode({}).toString('ascii'));
+            this.platform.log.debug('\n getState() called, updated cache and returning this JSON from AC:\n',
+              JSON.stringify(this.lastACState));
 
-          reject(err);
-        });
+            resolve(this.lastACState);
+          })
+          .catch((err) => {
+            reject(err);
+          });
+      }
     });
   }
 
-
-  // device specific packet format
-  // this is a payload for a larger packet, more or less
-  // wrapped up inside the packet generated by sendPacket in the
-  // broadlink Device Class
+  // specific to 0x4f9b Electrolux/Kelvinator ACs
   protected encode(state: Partial<ElectroluxState>): Buffer {
-
+    this.platform.log.debug('encode() called');
     // create data payload
     const data = JSON.stringify(this.getValue(state, Number));
-
     // packet length is 14 bytes + length of data payload
     const packet = Buffer.alloc(0xE + data.length);
-
     // 0x00, 0x01, length of data payload not inc these 2 bytes
     packet.writeUIntLE(12 + data.length, 0x00, 2);
     // 0x02, 0x03, 0x04 0x05, 0xa5a55a5a, connection id
@@ -262,23 +276,14 @@ export class electroluxACAccessory {
     packet.writeUIntLE(data.length, 0xA, 2);
     // write out the rest of the packet with ascii data (from JSON)
     packet.write(data, 0xE, 'ascii');
-
     // checksum calc
     const d_Checksum = (packet.subarray(0x08).reduce((a, b) => a + b, 0) + 0xC0AD) & 0xFFFF;
     // 0x06, 0x07, checksum 2 bytes, little endian
     packet.writeUIntLE(d_Checksum, 0x06, 2);
-
-    this.platform.log.debug('\n encode packet  hex :', packet.toString('hex'));
-    this.platform.log.debug('\n encode packet  asc :', packet.toString('ascii'));
-    this.platform.log.debug('\n encode packet  asc2:', packet.subarray(0x0e, 0x0e + struct('h')
-      .unpack_from(packet, 0x0a)[0]).toString('ascii'));
-
     return packet;
   }
 
   protected decode(payload: Buffer): ElectroluxState {
-    this.platform.log.debug('\n decode packet  hex :', payload.toString('hex'));
-    this.platform.log.debug('\n decode packet ascii:', payload.toString('ascii'));
     return this.getValue(
         JSON.parse(
           payload.subarray(0x0e).toString('ascii'),
@@ -292,30 +297,30 @@ export class electroluxACAccessory {
     Number: (value: I) => O,
   ): Partial<ElectroluxState<O>> {
     return {
+
+      // homekit uses 1 or 0 for these
       ac_pwr: state.ac_pwr,
-      scrdisp: state.scrdisp,
-      qtmode: state.qtmode !== undefined ? Number(state.qtmode) : undefined,
       ac_vdir: state.ac_vdir,
+      scrdisp: state.scrdisp,
+      qtmode: state.qtmode,
       mldprf: state.mldprf,
 
+      // bool for homekit
       ac_heaterstatus: state.ac_heaterstatus !== undefined ? Number(state.ac_heaterstatus) : undefined,
       ac_indoorfanstatus: state.ac_indoorfanstatus !== undefined ? Number(state.ac_indoorfanstatus) : undefined,
       ac_compressorstatus: state.ac_compressorstatus !== undefined ? Number(state.ac_compressorstatus) : undefined,
 
-
+      // number ranges for these
       ac_mode: state.ac_mode,
       ac_mark: state.ac_mark,
       temp: state.temp,
       envtemp: state.envtemp,
 
+      // string here
       modelnumber: state.modelnumber,
     };
   }
 
-
-
-  // from electrolux power status gets ac active status in homekit codes
-  // prob redundant, coz both are 0=off, 1=on
   public fromACGetActive (status: ElectroluxState): number {
     let currentValue = 0;
     switch (status.ac_pwr) {
@@ -335,8 +340,6 @@ export class electroluxACAccessory {
     return currentValue;
   }
 
-  // translates from the electrolux status to homekit status
-  //    looks at fan and compressor statuses etc, hence the if statements
   public fromACGetCurrentState(status: ElectroluxState): number {
     let currentValue = this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE;
     if (status.ac_indoorfanstatus && status.ac_compressorstatus) {
@@ -349,7 +352,6 @@ export class electroluxACAccessory {
     return currentValue;
   }
 
-  // translates from the electrolux mode numbers (0-6) to homekit modes (0-2)
   public fromACGetTargetState(status: ElectroluxState): number {
     let currentValue = this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
     if (status.ac_mode === acMode.AUTO) {
@@ -362,7 +364,6 @@ export class electroluxACAccessory {
     return currentValue;
   }
 
-  //translates between homekit numbers (0-2) and electrolux numbers (0-6)
   public fromHKTargetStateGetACMode(targetState: number): number {
     let targetACMode = this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
     switch (targetState) {
@@ -385,7 +386,6 @@ export class electroluxACAccessory {
     return targetACMode;
   }
 
-  // translates from the 6 fan speeds to a percentage for homekit
   public FromACMarkGetFanPercent(ac_mark: number): number {
     let percent = 100;
     switch (ac_mark) {
@@ -452,9 +452,6 @@ export class electroluxACAccessory {
     return ac_mark;
   }
 
-  // looks at the ac status object (ElectroluxState)
-  // grabs the current value in a number
-  // value ac_vdir: 0 = off , 1 = on
   public fromACgetSwingMode(status: ElectroluxState): number{
     let currentValue = status.ac_vdir;
     switch (status.ac_vdir) {
@@ -470,92 +467,54 @@ export class electroluxACAccessory {
     return currentValue;
   }
 
-  // looks at the ac status object (ElectroluxState)
-  // if ac is on, in auto mode, and fan auto,
-  // returns true
   public fromACisAutoMode(status: ElectroluxState): boolean{
-    this.platform.log.debug(`' checking Auto status : 
-    AC On: ${status.ac_pwr}, 
-    AC Mode: ${status.ac_mode}, 
-    AC Fanspeed: ${status.ac_mark}`);
     if (status.ac_mode === acMode.AUTO
       && status.ac_mark === fanSpeed.AUTO
       && status.ac_pwr === 1) {
-      this.platform.log.debug('Is in Auto: ..', true);
       return true;
-
     }
-    this.platform.log.debug('Is in Auto: ..', false);
     return false;
   }
-
 
   public async handleGetActive(): Promise<CharacteristicValue> {
     const status = await this.getState();
     const currentValue = this.fromACGetActive(status);
-    this.platform.log.debug(`'Checking AC Active : ${status.ac_pwr}\n'`);
     return currentValue;
   }
 
   public async handleSetActive(value: CharacteristicValue): Promise<void> {
     const ac_pwr = value as number;
-    // return this.setState({ ac_pwr }).then();
-    this.platform.log.info(`'Setting AC Active : ${value}\n'`);
-    const response = await this.setState({ ac_pwr });
-    this.updateAll(response);
+    this.platform.log.info(`'Setting AC Active : ${ac_pwr}'`);
+    await this.setState({ ac_pwr });
   }
 
-  // current heater / cooler state, looking at compressor/fan status
   public async handleGetCurrentState(): Promise<CharacteristicValue> {
     const status = await this.getState();
     const currentState = this.fromACGetCurrentState(status);
-
-    this.platform.log.debug(`'Checking AC Operational state :\n
-    Fan Status On : ${status.ac_indoorfanstatus}\n
-    Heater Status On : ${status.ac_heaterstatus}\n
-    AC Compressor Status On : ${status.ac_compressorstatus}\n
-    Returning Homekit Status : ${currentState} ( 0 = Inactive, 1 = Idle, 2 = Heating 3 = Cooling )\n'`);
-
     return currentState;
   }
 
-  // maps the 6 AC modes to the 3 supported by Homekit
   public async handleGetTargetState(): Promise<CharacteristicValue> {
     const status = await this.getState();
     const targetState = this.fromACGetTargetState(status);
-
-    this.platform.log.debug(`'Checking AC Current Mode :\n
-    Homekit ID: ${targetState} ( 0 = Auto, 1 = Heat, 2 = Cool )\n
-    Electrolux ID: ${status.ac_mode} ( 0 = Cool , Heat, Dry, Fan, 4 = Auto, 6 = Heat_8 )'`);
-
     return targetState;
   }
 
-  // maps the 3 AC target states to auto/heat/cool on the Electrolux
   public async handleSetTargetState(ac_TargetState: CharacteristicValue): Promise<void> {
     const ac_mode = this.fromHKTargetStateGetACMode(ac_TargetState as number);
-    // if (ac_modeSet === 0)
-    // return this.setState({ ac_mode }).then();
-    this.platform.log.debug(`'Setting AC Mode AUTO :\n
-    Homekit ID: ${ac_TargetState} ( 0 = Auto, 1 = Heat, 2 = Cool )\n
-    Electrolux ID: ${ac_mode} ( 0 = Cool , Heat, Dry, Fan, 4 = Auto, 6 = Heat_8 )'`);
-    const response = await this.setState({ ac_mode });
-    this.updateAll(response);
+    this.platform.log.info(`' Setting AC Mode : ${ac_mode}' (4 is auto)`);
+    await this.setState({ ac_mode });
   }
-
-
 
   public async handleGetCurrentTemp(): Promise<CharacteristicValue> {
     const status = await this.getState();
-    this.platform.log.debug(`' Checking ambient temp : ${status.envtemp}'`);
     return status.envtemp;
   }
 
   public async handleSetSwingMode(value: CharacteristicValue): Promise<void> {
     const ac_vdir = value as number;
-    this.platform.log.debug(`' Setting Fan Swing : ${ac_vdir}'`);
-    const response = await this.setState({ ac_vdir });
-    this.updateAll(response);
+    this.platform.log.info(`' Setting Fan Swing : ${ac_vdir}'`);
+    await this.setState({ ac_vdir });
   }
 
   public async handleGetSwingMode(): Promise<CharacteristicValue> {
@@ -564,90 +523,73 @@ export class electroluxACAccessory {
     return currentValue;
   }
 
-
-
   public async handleGetRotationSpeed(): Promise<CharacteristicValue> {
     const status = await this.getState();
     const fanPercent = this.FromACMarkGetFanPercent(status.ac_mark);
-    this.platform.log.debug(`' Checking Fanspeed -- ac_mark: ${status.ac_mark}, Fanspeed %: ${fanPercent}'`);
     return fanPercent;
   }
 
   public async handleSetRotationSpeed(value: CharacteristicValue): Promise<void> {
     const ac_mark = this.fromFanPercentGetACMark(value as number);
-    this.platform.log.debug(`' setting Fanspeed -- ac_mark: ${ac_mark}, Fanspeed %: ${value}'`);
-    const response = await this.setState({ ac_mark });
-    this.updateAll(response);
+    this.platform.log.info(`'Setting Fanspeed - Raw setting: ${ac_mark}, Fanspeed %: ${value}'`);
+    await this.setState({ ac_mark });
   }
 
-  // from the switch type in node-broadlink, seems to be json !
   public async handleSetTargetTemp(targetTemp: CharacteristicValue): Promise<void> {
-    let temp = targetTemp as number;
-    if (temp <= 17) {
-      temp = 17;
-    }
-    if (temp >= 30) {
-      temp = 30;
-    }
-    // return this.setState({ temp }).then();
-    this.platform.log.debug(`'Setting Target Temp : asked for ${targetTemp} -> setting ${temp}'`);
-    const response = await this.setState({ temp });
-    this.updateAll(response);
+    const temp = targetTemp as number;
+    this.platform.log.info(`'Setting Target Temp : asked for ${targetTemp}'`);
+    await this.setState({ temp });
   }
 
   public async handleGetTargetTemp(): Promise<CharacteristicValue> {
     const status = await this.getState();
-    this.platform.log.debug(`' Checking ambient temp : ${status.temp}'`);
     return status.temp;
   }
 
-
-
-
   public async handleSetDisplay(value: CharacteristicValue): Promise<void> {
-    const scrdisp = value as number;
-    this.platform.log.debug(' Setting display :', scrdisp);
-    const response = await this.setState({ scrdisp });
-    this.updateAll(response);
+    let digit = 0;
+    const sw = value as boolean;
+    if (sw) {
+      digit = 1;
+    }
+    this.platform.log.info(' Setting display :', digit);
+    await this.setState({ scrdisp: digit });
   }
 
   public async handleGetDisplay(): Promise<CharacteristicValue> {
     const status = await this.getState();
-    this.platform.log.debug(' Checking display :', status.scrdisp);
     return status.scrdisp;
   }
 
-
-
-  // from the switch type in node-broadlink, seems to be json !
-
   public async handleSetSelfClean(value: CharacteristicValue): Promise<void> {
-    const mldprf = value as number;
-    this.platform.log.debug(' Setting Self Clean switch :', value);
-    const response = await this.setState({ mldprf });
-    this.updateAll(response);
+    let digit = 0;
+    const sw = value as boolean;
+    if (sw) {
+      digit = 1;
+    }
+    this.platform.log.info(' Setting Self Clean switch :', digit);
+    await this.setState({ mldprf: digit });
   }
 
   public async handleGetSelfClean(): Promise<CharacteristicValue> {
     const status = await this.getState();
-    this.platform.log.debug(' Checking selfclean switch :', status.mldprf);
     return status.mldprf;
   }
 
 
-
   // sets auto, and turning off powers off
-
   public async handleSetAuto(value: CharacteristicValue): Promise<void> {
-    this.platform.log.debug(' Setting Auto switch :', value);
-    const desiredAuto = value as number;
-    if (desiredAuto === 1) {
-      const response = await this.setState({ ac_pwr: 1, ac_mark: fanSpeed.AUTO, ac_mode: acMode.AUTO });
-      this.updateAll(response);
-    } else if (desiredAuto === 0) {
-      const response = await this.setState({ ac_pwr: 1 });
-      this.updateAll(response);
+    const sw = value as boolean;
+    if (sw) {
+      // const response =
+      await this.setState({ ac_pwr: 1, ac_mark: fanSpeed.AUTO, ac_mode: acMode.AUTO });
+      // this.updateAll(response);
+    } else if (!sw) {
+      // const response =
+      await this.setState({ ac_pwr: 1 });
+      // this.updateAll(response);
     }
+    this.platform.log.info(' Setting Auto mode :', sw);
   }
 
 
@@ -661,13 +603,30 @@ export class electroluxACAccessory {
     }
   }
 
-  // not used. ideally get model and push it into the accessory data
+  // Get model in form of string
   public async getModel(): Promise<string> {
     const status = await this.getState();
-    return status.modelnumber as string;
+    return status.modelnumber;
   }
 
 }
+
+
+// get command fires handler function
+
+// handler awaits getstate
+
+// getstate then fires off data into encode, then off to send packet
+
+// ocne response received, passes to decrypt, then decode.
+
+// decode hands to getvalue
+
+// getvalue hands back to decode, which parses json
+
+// hands back to decode
+
+// hands back to getvalue (as electroluxState object)
 
 
 
