@@ -1,7 +1,7 @@
 {
   "displayName": "Homebridge Electrolux Broadlink AC",
   "name": "homebridge-electrolux-broadlink-ac",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Controls Electrolux family Airconditioners (inc Kelvinator) with a built in Broadlink WiFi module",
   "license": "Apache-2.0",
   "repository": {
