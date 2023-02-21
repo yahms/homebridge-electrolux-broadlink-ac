@@ -45,9 +45,13 @@ export interface ElectroluxState<T = boolean | number> {
 
 export class electroluxACAccessory {
   private service: Service;
-  private swClean: Service;
-  private swDisplay: Service;
-  private swAuto: Service;
+
+  private swAuto?: Service;
+  private swClean?: Service;
+  private swDisplay?: Service;
+  private swFanSwing?: Service;
+  private swQuietAuto?: Service;
+
 
   public TYPE = 'ELECTROLUX_OEM';
   public deviceType = 0x4f9b;
@@ -55,6 +59,14 @@ export class electroluxACAccessory {
   public updateInterval = 5000;   // interval for async updates
   public LowTempLimit = 17;
   public HighTempLimit = 30;
+
+  private showAuto = false;
+  private showQuietAuto = false;
+  private showDisplay = false;
+  private showSelfClean = false;
+  private showFanSwing = false;
+
+
 
   private acStateCache = {
     ac_pwr: 0,
@@ -88,10 +100,42 @@ export class electroluxACAccessory {
     }
 
 
-    if (this.platform.config.UpdateFrequency) {
-      this.updateInterval = this.platform.config.UpdateFrequency;
-      this.platform.log.debug('Setting updateFrequency from config.json :', this.platform.config.UpdateFrequency);
+    if (this.platform.config.updateFrequency) {
+      this.updateInterval = this.platform.config.updateFrequency;
+      this.platform.log.debug('Setting updateFrequency from config.json :', this.platform.config.updateFrequency);
     }
+
+    // optional switches
+
+
+    if (this.platform.config.auto) {
+      this.showAuto = this.platform.config.auto as boolean;
+      this.platform.log.info('Setting Fan Swing switch :', this.platform.config.auto );
+    }
+
+    if (this.platform.config.selfClean) {
+      this.showSelfClean = this.platform.config.selfClean as boolean;
+      this.platform.log.info('Setting Self Cleam switch :', this.platform.config.selfCleam );
+    }
+
+    if (this.platform.config.display) {
+      this.showDisplay = this.platform.config.display as boolean;
+      this.platform.log.info('Setting Diplay switch :', this.platform.config.display );
+    }
+
+    if (this.platform.config.fanSwing) {
+      this.showFanSwing = this.platform.config.fanSwing as boolean;
+      this.platform.log.info('Setting Fan Swing switch :', this.platform.config.fanSwing );
+    }
+
+    if (this.platform.config.quietAuto) {
+      this.showQuietAuto = this.platform.config.quietAuto as boolean;
+      this.platform.log.info('Setting Fan Swing switch :', this.platform.config.quietAuto );
+    }
+
+
+
+
 
 
 
@@ -110,18 +154,7 @@ export class electroluxACAccessory {
     this.service = this.accessory.getService(this.platform.Service.HeaterCooler) ||
     this.accessory.addService(this.platform.Service.HeaterCooler);
 
-    // add additional switches for clean/display/auto
-    this.swClean = this.accessory.getService('Self Clean') ||
-    this.accessory.addService(this.platform.Service.Switch, 'Self Clean', 'swClean');
-    this.swClean.setCharacteristic(this.platform.Characteristic.Name, 'Self Clean');
 
-    this.swDisplay = this.accessory.getService('LED Display') ||
-    this.accessory.addService(this.platform.Service.Switch, 'LED Display', 'swDisplay');
-    this.swDisplay.setCharacteristic(this.platform.Characteristic.Name, 'LED Display');
-
-    this.swAuto = this.accessory.getService('Auto') ||
-    this.accessory.addService(this.platform.Service.Switch, 'Auto', 'swAuto');
-    this.swAuto.setCharacteristic(this.platform.Characteristic.Name, 'Auto');
 
     // default name on the Home app
     this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.name);
@@ -166,18 +199,51 @@ export class electroluxACAccessory {
       //.onGet(this.handleGetTargetTemp.bind(this))
       .onSet(this.handleSetTargetTemp.bind(this));
 
-    // additional handlers for the extra switches
-    this.swClean.getCharacteristic(this.platform.Characteristic.On)
-    // .onGet(this.handleGetSelfClean.bind(this))
-      .onSet(this.handleSetSelfClean.bind(this));
 
-    this.swDisplay.getCharacteristic(this.platform.Characteristic.On)
-      //.onGet(this.handleGetDisplay.bind(this))
-      .onSet(this.handleSetDisplay.bind(this));
 
-    this.swAuto.getCharacteristic(this.platform.Characteristic.On)
-      //.onGet(this.handleGetAuto.bind(this))
-      .onSet(this.handleSetAuto.bind(this));
+    // add additional switches for clean/display/auto
+
+    if (this.platform.config.auto) {
+      this.swAuto = this.accessory.getService('Auto') ||
+    this.accessory.addService(this.platform.Service.Switch, 'Auto', 'swAuto');
+      this.swAuto.setCharacteristic(this.platform.Characteristic.Name, 'Auto');
+      this.swAuto.getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.handleSetAuto.bind(this));
+    }
+
+    if (this.platform.config.selfClean) {
+      this.swClean = this.accessory.getService('Self Clean') ||
+    this.accessory.addService(this.platform.Service.Switch, 'Self Clean', 'swClean');
+      this.swClean.setCharacteristic(this.platform.Characteristic.Name, 'Self Clean');
+      this.swClean.getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.handleSetSelfClean.bind(this));
+    }
+
+    if (this.platform.config.display) {
+      this.swDisplay = this.accessory.getService('LED Display') ||
+    this.accessory.addService(this.platform.Service.Switch, 'LED Display', 'swDisplay');
+      this.swDisplay.setCharacteristic(this.platform.Characteristic.Name, 'LED Display');
+      this.swDisplay.getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.handleSetDisplay.bind(this));
+    }
+
+    if (this.platform.config.fanSwing) {
+      this.swFanSwing = this.accessory.getService('Fan Swing') ||
+      this.accessory.addService(this.platform.Service.Switch, 'Fan Swing', 'swFanSwing');
+      this.swFanSwing.setCharacteristic(this.platform.Characteristic.Name, 'Fan Swing');
+      this.swFanSwing.getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.handleSetSwingModeSwitch.bind(this));
+    }
+
+    if (this.platform.config.quietAuto) {
+      this.swQuietAuto = this.accessory.getService('Quiet Auto') ||
+        this.accessory.addService(this.platform.Service.Switch, 'Quiet Auto', 'swQuietAuto');
+      this.swQuietAuto.setCharacteristic(this.platform.Characteristic.Name, 'Quiet Auto');
+      this.swQuietAuto.getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.handleSetQuietAuto.bind(this));
+    }
+
+
   }
 
   // update all characteristics
@@ -207,16 +273,31 @@ export class electroluxACAccessory {
     this.service.getCharacteristic(this.platform.Characteristic.
       HeatingThresholdTemperature).updateValue(status.temp);
 
-    this.swClean.getCharacteristic(this.platform.Characteristic.
-      On).updateValue(status.mldprf === 1? true : false);
 
-    this.swDisplay.getCharacteristic(this.platform.Characteristic.
-      On).updateValue(status.scrdisp);
+    if (this.platform.config.auto) {
+      this.swAuto?.getCharacteristic(this.platform.Characteristic.
+        On).updateValue(this.fromACisAutoMode(status));
+    }
 
-    this.platform.log.debug('disp', status.scrdisp );
+    if (this.platform.config.selfClean) {
+      this.swClean?.getCharacteristic(this.platform.Characteristic.
+        On).updateValue(status.mldprf);
+    }
 
-    this.swAuto.getCharacteristic(this.platform.Characteristic.
-      On).updateValue(this.fromACisAutoMode(status));
+    if (this.platform.config.display) {
+      this.swDisplay?.getCharacteristic(this.platform.Characteristic.
+        On).updateValue(status.scrdisp);
+    }
+
+    if (this.platform.config.fanSwing) {
+      this.swFanSwing?.getCharacteristic(this.platform.Characteristic.
+        On).updateValue(this.fromACisSwingMode(status));
+    }
+
+    if (this.platform.config.quietAuto) {
+      this.swQuietAuto?.getCharacteristic(this.platform.Characteristic.
+        On).updateValue(this.fromACisQuietAutoMode(status));
+    }
   }
 
 
@@ -456,7 +537,8 @@ export class electroluxACAccessory {
 
   // from a homekit fan percentage, returns an electrolux fanspeed setting
   //     HK % - AC Setting   (ac_mark is the raw number)
-  //    0-19% - Quiet        (ac_mark 5)
+  //       0%   turns AC off
+  //    1-19% - Quiet        (ac_mark 5)
   //   20-39% - Low          (ac_mark 1)
   //   40-59% - Med          (ac_mark 2)
   //   60-79% - High         (ac_mark 3)
@@ -467,7 +549,7 @@ export class electroluxACAccessory {
     if (percent === 100) {
       // 100% Auto
       ac_mark = fanSpeed.AUTO;
-    } else if (percent >= 0 && percent <20) {
+    } else if (percent > 0 && percent <20) {
       // 1 - 19% Quiet
       ac_mark = fanSpeed.QUIET;
     } else if (percent >=20 && percent <40 ) {
@@ -510,9 +592,26 @@ export class electroluxACAccessory {
     return currentValue;
   }
 
+  public fromACisSwingMode(status: ElectroluxState): boolean{
+    if (status.ac_vdir === this.platform.Characteristic.SwingMode.SWING_ENABLED) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
   public fromACisAutoMode(status: ElectroluxState): boolean{
     if (status.ac_mode === acMode.AUTO
       && status.ac_mark === fanSpeed.AUTO
+      && status.ac_pwr === 1) {
+      return true;
+    }
+    return false;
+  }
+
+  public fromACisQuietAutoMode(status: ElectroluxState): boolean{
+    if (status.ac_mode === acMode.AUTO
+      && status.ac_mark === fanSpeed.QUIET
       && status.ac_pwr === 1) {
       return true;
     }
@@ -524,6 +623,11 @@ export class electroluxACAccessory {
     const currentValue = this.fromACGetActive(status);
     this.platform.log.debug('Getting Active status', currentValue, ' JSON : ', JSON.stringify(status));
     this.updateAllNow(status);
+    this.platform.log.info('AC Status: ', this.accessory.context.device.name,
+      ' at ', this.accessory.context.device.host.address, ' :\n',
+      'Ambient Temp: ', status.envtemp,
+      ', Power: ', status.ac_pwr,
+      ', Target Temp: ', status.temp);
     return currentValue;
   }
 
@@ -533,8 +637,8 @@ export class electroluxACAccessory {
     await this.setState({ ac_pwr });
   }
 
-  public async handleSetTargetState(ac_TargetState: CharacteristicValue): Promise<void> {
-    const ac_mode = this.fromHKTargetStateGetACMode(ac_TargetState as number);
+  public async handleSetTargetState(value: CharacteristicValue): Promise<void> {
+    const ac_mode = this.fromHKTargetStateGetACMode(value as number);
     this.platform.log.info(`' Setting AC Mode : ${ac_mode}' (4 is auto)`);
     await this.setState({ ac_mode });
   }
@@ -545,15 +649,24 @@ export class electroluxACAccessory {
     await this.setState({ ac_vdir });
   }
 
+  public async handleSetSwingModeSwitch(value: CharacteristicValue): Promise<void> {
+    this.platform.log.info(' Setting Fan Swing : ', value);
+    if (value) {
+      await this.setState({ ac_vdir: 1 });
+    } else {
+      await this.setState({ ac_vdir: 0 });
+    }
+  }
+
   public async handleSetRotationSpeed(value: CharacteristicValue): Promise<void> {
     const ac_mark = this.fromFanPercentGetACMark(value as number);
     this.platform.log.info(`'Setting Fanspeed - Raw setting: ${ac_mark}, Fanspeed %: ${value}'`);
     await this.setState({ ac_mark });
   }
 
-  public async handleSetTargetTemp(targetTemp: CharacteristicValue): Promise<void> {
-    const temp = this.normTemp(targetTemp as number);
-    this.platform.log.info(`'Setting Target Temp : asked for ${targetTemp}'`);
+  public async handleSetTargetTemp(value: CharacteristicValue): Promise<void> {
+    const temp = this.normTemp(value as number);
+    this.platform.log.info(`'Setting Target Temp : asked for ${value}'`);
     await this.setState({ temp });
   }
 
@@ -579,15 +692,29 @@ export class electroluxACAccessory {
   // sets auto, and turning off powers off
   public async handleSetAuto(value: CharacteristicValue): Promise<void> {
     if (value) {
+      await this.setState({ ac_pwr: 1 });
+      await this.setState({ ac_mode: acMode.AUTO });
+      await this.setState({ ac_mark: fanSpeed.AUTO });
+    } else if (!value) {
+      await this.setState({ ac_pwr: 0 });
+    }
+    this.platform.log.info(' Setting Auto mode :', value);
+  }
+
+  // sets auto, and turning off powers off
+  public async handleSetQuietAuto(value: CharacteristicValue): Promise<void> {
+    if (value) {
       // const response =
-      await this.setState({ ac_pwr: 1, ac_mark: fanSpeed.AUTO, ac_mode: acMode.AUTO });
+      await this.setState({ ac_pwr: 1 });
+      await this.setState({ ac_mode: acMode.AUTO });
+      await this.setState({ ac_mark: fanSpeed.QUIET });
       // this.updateAll(response);
     } else if (!value) {
       // const response =
-      await this.setState({ ac_pwr: 1 });
+      await this.setState({ ac_pwr: 0 });
       // this.updateAll(response);
     }
-    this.platform.log.info(' Setting Auto mode :', value);
+    this.platform.log.info(' Setting QuietAuto mode :', value);
   }
 
   // Get model in form of string

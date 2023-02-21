@@ -20,15 +20,37 @@
 				"maximum": 1000,
 				"description": "Maximum time to cache AC status data"
 			},
-			"UpdateFrequency": {
-				"title": "AC Status Update Frequency",
-				"type": "integer",
+			"auto": {
+				"title": "Auto Switch",
+				"type": "boolean",
 				"required": false,
-				"default": 5000,
-				"minimum": 2000,
-				"maximum": 10000,
-				"description": "Time between scheduled status updates"
+				"description": "Expose the Auto Mode switch?"
+			},
+			"selfClean": {
+				"title": "Self Clean Switch",
+				"type": "boolean",
+				"required": false,
+				"description": "Expose the Self Clean switch?"
+			},
+			"display": {
+				"title": "LED Display Switch",
+				"type": "boolean",
+				"required": false,
+				"description": "Expose LED Display/Beep switch?"
+			},
+			"fanSwing": {
+				"title": "Exrtra Fan Swing Switch",
+				"type": "boolean",
+				"required": false,
+				"description": "Expose a separate Fan Swing switch? (in addition to the native support)"
+			},
+			"quietAuto": {
+				"title": "Quiet Auto Switch",
+				"type": "boolean",
+				"required": false,
+				"description": "Expose the Quiet Auto Mode switch?"
 			}
+
 		}
 	}
 }
