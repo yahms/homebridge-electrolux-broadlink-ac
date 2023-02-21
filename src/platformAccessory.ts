@@ -467,7 +467,7 @@ export class electroluxACAccessory {
     if (percent === 100) {
       // 100% Auto
       ac_mark = fanSpeed.AUTO;
-    } else if (percent === 0 && percent <20) {
+    } else if (percent >= 0 && percent <20) {
       // 1 - 19% Quiet
       ac_mark = fanSpeed.QUIET;
     } else if (percent >=20 && percent <40 ) {
