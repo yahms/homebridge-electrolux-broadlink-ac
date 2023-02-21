@@ -470,16 +470,16 @@ export class electroluxACAccessory {
     } else if (percent === 0 && percent <20) {
       // 1 - 19% Quiet
       ac_mark = fanSpeed.QUIET;
-    } else if (percent <=20 && percent <40 ) {
+    } else if (percent >=20 && percent <40 ) {
       // low 20 - 39
       ac_mark = fanSpeed.LOW;
-    } else if (percent <=40 && percent <60) {
+    } else if (percent >=40 && percent <60) {
       // med 40 - 59
       ac_mark = fanSpeed.MED;
-    } else if (percent <=60 && percent <80) {
+    } else if (percent >=60 && percent <80) {
       // high 60 - 79
       ac_mark = fanSpeed.HIGH;
-    } else if (percent <=80 && percent <100) {
+    } else if (percent >=80 && percent <100) {
       // turbo 80 - 99
       ac_mark = fanSpeed.TURBO;
     }
