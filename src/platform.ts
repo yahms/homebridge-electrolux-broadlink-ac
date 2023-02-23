@@ -1,9 +1,9 @@
-import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
+import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic, AccessoryEventTypes } from 'homebridge';
 import { ElectroluxBroadlinkPlatformConfig, namedDevice } from './types';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { electroluxACAccessory } from './platformAccessory';
-import * as broadlink from 'node-broadlink';
-import Device from 'node-broadlink/dist/device';
+import * as broadlink from './broadlink';
+import Device from './device';
 
 
 
@@ -47,19 +47,30 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
 
   async butFirstDiscover(): Promise<Device[]> {
     let discoveredACDevices:Device[] = [];
-    const searches = 10;
-    for (let i = 1; searches; i++) {
-      this.log.info('Running Broadlink Discovery #', i, ' of a possible ', searches);
+    let bestResult = 0;
+    const maxSearches = 12;
+    const thatllDo = 6;
+    for (let i = 1; i <= maxSearches; i++) {
+      this.log.info('Running Broadlink Discovery #', i, ' of a possible ', maxSearches);
       discoveredACDevices = await broadlink.discover();
 
+      if (discoveredACDevices.length > bestResult) {
+        bestResult = discoveredACDevices.length;
+      }
+
       if (discoveredACDevices.length >= this.accessories.length && discoveredACDevices.length > 0) {
-        this.log.info('Expected to see at least', this.accessories.length, ' devices, saw ',
+        this.log.info('\nExpected to see at least', this.accessories.length, ' devices, saw ',
           discoveredACDevices.length, '. Looking good.');
         break;
+      } else if ((discoveredACDevices.length >= bestResult) && (i > thatllDo)) {
+        this.log.info('\nExpected to see at least', this.accessories.length, ' best weve seen is  ',
+          bestResult, '. That\'ll do.');
+        break;
+      } else if (i < maxSearches) {
+        this.log.info('\nExpected to see at least', this.accessories.length, ' devices, saw ',
+          discoveredACDevices.length, ', lets try again in 10 seconds... ');
+        await new Promise(f => setTimeout(f, 10000));
       }
-      this.log.info('Expected to see at least', this.accessories.length, ' devices, saw ',
-        discoveredACDevices.length, '. Lets try again in 5 seconds.');
-      await new Promise(f => setTimeout(f, 5000));
     }
     return discoveredACDevices;
   }
@@ -125,15 +136,18 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
     this.log.info('Authenticating to:', acDevice.name, ' at ', acDevice.host.address);
     const authenticatedDevice = await acDevice.auth();
     if (authenticatedDevice) {
-      this.log.info('Authentication SUCCESS:', acDevice.name, ' at ', acDevice.host.address);
+      this.log.info('Authentication SUCCESS:', authenticatedDevice.name,
+        ' at ', authenticatedDevice.host.address, ' [', this.getMAC(authenticatedDevice), ']');
+
+      // store the Device object on the accessory
       accessory.context.device = authenticatedDevice;
 
-      const deviceConfig = this.getDeviceConfig(acDevice) ?? undefined;
+      const deviceConfig = this.getDeviceConfig(authenticatedDevice) ?? undefined;
       accessory.displayName = deviceConfig?.name ?? authenticatedDevice.name;
       accessory.context.model = deviceConfig?.model ?? 'Electrolux Family AC';
       accessory.context.manufacturer = deviceConfig?.manufacturer ?? 'Electrolux';
       accessory.context.serial = this.getSerial(authenticatedDevice);
-
+      accessory.context.macAddress = this.getMAC(authenticatedDevice);
 
       const logmsg = ''.concat(
         '\nName         : ', accessory.displayName ?? 'missing',
@@ -142,7 +156,7 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
         '\nSerial No    : ', accessory.context.serial ?? 'missing',
         '\nUUID         : ', accessory.UUID ?? 'missing',
         '\nDevice Type  : ', '0x'.concat(accessory.context.device?.deviceType?.toString(16) ?? 'missing'),
-        '\nMac Address  : [', this.getMAC(authenticatedDevice) ?? 'missing', ']',
+        '\nMac Address  : [', accessory.context.macAddress ?? 'missing', ']',
         '\nIP Address   : ', accessory.context.device?.host?.address ?? 'missing');
 
       this.log.info('Setting up :', logmsg);
@@ -164,6 +178,7 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
   async discoverDevices() {
 
     const discoveredDevices = await this.butFirstDiscover();
+    //const discoveredDevices:Device[] = [];
 
     for (const dev of discoveredDevices) {
       if (this.isDeviceTypeElectrolux(dev)) {
@@ -189,6 +204,15 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
       } else {
         this.log.info('Skipping adding ', dev.name.toString(), ' at ', dev.host.address,
           ' because it has an unsupported Device Type :', '0x'.concat(dev.deviceType.toString(16)));
+      }
+    }
+
+    for (const acc of this.accessories) {
+      const searchResult = discoveredDevices.find((i) => (this.getUUID(i) === acc.UUID));
+      if (!searchResult) {
+        this.log.info('Cached device was NOT discovered:\n',
+          acc.displayName ?? 'missing', acc.context.device?.host?.address ?? 'missing',
+          acc.context.macAddress ?? 'missing');
       }
     }
   }
