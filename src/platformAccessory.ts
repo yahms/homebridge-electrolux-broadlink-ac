@@ -1,4 +1,4 @@
-import { PlatformConfig, Service, PlatformAccessory, CharacteristicValue, TargetUpdates } from 'homebridge';
+import { PlatformConfig, Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { ElectroluxBroadlinkACPlatform } from './platform';
 import { ElectroluxBroadlinkPlatformConfig } from './types';
 
@@ -110,12 +110,8 @@ export class electroluxACAccessory {
     this.updateIntervalSeconds = this.config.updateInterval ?? 5;   // interval for async updates
     this.updateInterval = this.updateIntervalSeconds * 1000;
 
-
-
-    if (this.platform.config.minRequestFrequency) {
-      this.staleTimeout = this.platform.config.minRequestFrequency;
-      this.platform.log.debug('Setting staleTimeout from config.json :', this.platform.config.minRequestFrequency);
-    }
+    this.platform.log.info('Max time between reads :', this.staleTimeout, 'ms');
+    this.platform.log.info('Update Interval :', this.updateIntervalSeconds, 's');
 
 
     // optional switches
@@ -123,33 +119,30 @@ export class electroluxACAccessory {
 
     if (this.platform.config.auto) {
       this.showAuto = this.platform.config.auto as boolean;
-      this.platform.log.info('Setting Auto switch :', this.platform.config.auto );
+      this.platform.log.info('Expose Auto switch :', this.platform.config.auto );
     }
 
     if (this.platform.config.selfClean) {
       this.showSelfClean = this.platform.config.selfClean as boolean;
-      this.platform.log.info('Setting Self Clean switch :', this.platform.config.selfClean );
+      this.platform.log.info('Expose Self Clean switch :', this.platform.config.selfClean );
     }
 
     if (this.platform.config.display) {
       this.showDisplay = this.platform.config.display as boolean;
-      this.platform.log.info('Setting Diplay switch :', this.platform.config.display );
+      this.platform.log.info('Expose Diplay switch :', this.platform.config.display );
     }
 
     if (this.platform.config.fanSwing) {
       this.showFanSwing = this.platform.config.fanSwing as boolean;
-      this.platform.log.info('Setting Fan Swing switch :', this.platform.config.fanSwing );
+      this.platform.log.info('Expose Fan Swing switch :', this.platform.config.fanSwing );
     }
 
     if (this.platform.config.quietAuto) {
       this.showQuietAuto = this.platform.config.quietAuto as boolean;
-      this.platform.log.info('Setting Quiet Auto switch :', this.platform.config.quietAuto );
+      this.platform.log.info('Expose Quiet Auto switch :', this.platform.config.quietAuto );
     }
 
 
-
-
-    this.getModel().then(value => accessory.context.model = value);
 
     // set accessory information
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
@@ -319,7 +312,6 @@ export class electroluxACAccessory {
           this.acStateCache = (this.decode(decryptedResponse));
           this.platform.log.debug('\n setState() called, updated cache and returning this JSON from AC:\n',
             JSON.stringify(this.acStateCache));
-
           resolve(this.acStateCache);
         })
         .catch((err) => {
