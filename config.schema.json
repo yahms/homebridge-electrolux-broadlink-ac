@@ -18,13 +18,22 @@
 				"default": 200,
 				"minimum": 0,
 				"maximum": 1000,
-				"description": "Maximum time to cache AC status data"
+				"description": "Maximum time to cache AC status data in milli seconds (0-1000)"
+			},
+			"updateInterval": {
+				"title": "Minimum Request Frequency",
+				"type": "integer",
+				"required": false,
+				"default": 5,
+				"minimum": 2,
+				"maximum": 3,
+				"description": "how many milliseconds between periodic updates in seconds (2 - 30)"
 			},
 			"auto": {
 				"title": "Auto Switch",
 				"type": "boolean",
 				"required": false,
-				"description": "Expose the Auto Mode switch?"
+				"description": "Expose an Auto Mode switch? (plain on off switch, but switching on also switches to AC Auto and Fan Auto"
 			},
 			"selfClean": {
 				"title": "Self Clean Switch",
@@ -48,9 +57,60 @@
 				"title": "Quiet Auto Switch",
 				"type": "boolean",
 				"required": false,
-				"description": "Expose the Quiet Auto Mode switch?"
+				"description": "Expose the Quiet Auto Mode switch? (sets AC mode to Auto, Fan mode to Quiet)"
+			},
+			"namedDevices": {
+				"type": "array",
+				"items": {
+					"title": "Named AC",
+					"type": "object",
+					"properties": {
+						"name": {
+							"title": "Name",
+							"type": "string",
+							"placeholder": "i.e. Kitchen Aircon",
+							"required": true,
+							"maxLength": 30,
+							"description": "When discovered, this name will be used instead of the default"
+						},
+						"macAddress": {
+							"title": "MAC Address",
+							"type": "string",
+							"default": "cc:00:00:00:00:11",
+							"required": true,
+							"pattern": "^([A-Fa-f0-9]{2}:){5}[A-Fa-f0-9]{2}$",
+							"description": "The device with this MAC address will have these names applied"
+						},
+						"model": {
+							"title": "Model",
+							"type": "string",
+							"default": "AB123",
+							"required": false,
+							"description": "Enter a custom model number to be displayed in the device properties"
+						},
+						"manufacturer": {
+							"title": "Manufacturer",
+							"type": "string",
+							"default": "Electrolux",
+							"required": false,
+							"description": "Enter the manufacturer to be displayed in the device properties"
+						}
+					}
+					
+				}
+			},
+			"allowedDevices": {
+				"type": "array",
+				"items": {
+					"title": "Allow other Broadlink Device Types",
+					"type": "string",
+					"placeholder": "0xaaaa",
+					"required": false,
+					"default": "0x4f9b",
+					"pattern": "^0x([A-Fa-f0-9]){4}$",
+					"description": "This allows other Broadlink device types to be used. Expect the unexpected."
+				}
 			}
-
 		}
 	}
 }

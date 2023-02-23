@@ -1,5 +1,6 @@
-import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
+import { PlatformConfig, Service, PlatformAccessory, CharacteristicValue, TargetUpdates } from 'homebridge';
 import { ElectroluxBroadlinkACPlatform } from './platform';
+import { ElectroluxBroadlinkPlatformConfig } from './types';
 
 export enum fanSpeed {
   AUTO = 0,
@@ -22,29 +23,37 @@ export enum acMode {
 // this sets up the json references for data and commands
 export interface ElectroluxState<T = boolean | number> {
 
-  // boolean
-  ac_pwr: number;                    // Power
-  scrdisp: T;                   // LED display
-  qtmode: number;                    // beep on (tied to scrdisp, so kinda pointless)
+  // 0 or 1 for homekit
+  ac_pwr: number;                    // power duh
   ac_vdir: number;                   // vertical swing
-  mldprf: number;                    // self clean
 
-  // non boolean variables
+  // boolean for homekit
+  scrdisp: T;                       //  LED display
+  qtmode: T;                    // beep on (tied to scrdisp, so kinda pointless)
+  mldprf: T;                    // self clean
+
+  // non boolean variables for homekit
   ac_mark: number;              // Fan speed auto 0, low 1, med 2, high 3, turbo 4, quiet 5
   ac_mode: number;              // AC Mode cool 0, heat 1, dry 2, fan 3, auto 4, heat_8 6
   temp: number;                 // Target temp
   envtemp: number;              // Ambient temp
 
-  // purely informational
+  // purely informational, bool, string for ease
   ac_heaterstatus: T;
   ac_indoorfanstatus: T;
   ac_compressorstatus: T;
   modelnumber: string;
+
 }
 
 
 export class electroluxACAccessory {
   private service: Service;
+
+  private readonly platform: ElectroluxBroadlinkACPlatform;
+  private readonly accessory: PlatformAccessory;
+  private readonly config: ElectroluxBroadlinkPlatformConfig;
+
 
   private swAuto?: Service;
   private swClean?: Service;
@@ -52,11 +61,11 @@ export class electroluxACAccessory {
   private swFanSwing?: Service;
   private swQuietAuto?: Service;
 
-
   public TYPE = 'ELECTROLUX_OEM';
   public deviceType = 0x4f9b;
   public staleTimeout = 200;      // how old the stored AC state can get
-  public updateInterval = 5000;   // interval for async updates
+  public updateIntervalSeconds = 5;   // interval for async updates
+  public updateInterval = 5000;
   public LowTempLimit = 17;
   public HighTempLimit = 30;
 
@@ -66,18 +75,19 @@ export class electroluxACAccessory {
   private showSelfClean = false;
   private showFanSwing = false;
 
-
-
   private acStateCache = {
     ac_pwr: 0,
-    scrdisp: 0,
-    qtmode: 0,
     ac_vdir: 0,
-    mldprf: 0,
+
+    scrdisp: false,
+    qtmode: false,
+    mldprf: false,
+
     ac_mark: 0,
     ac_mode: 4,
     temp: 24,
     envtemp: 24,
+
     ac_heaterstatus: false,
     ac_indoorfanstatus: false,
     ac_compressorstatus: false,
@@ -87,10 +97,18 @@ export class electroluxACAccessory {
   private lastSuccessfulGet = 1;
 
   constructor(
-    private readonly platform: ElectroluxBroadlinkACPlatform,
-    private readonly accessory: PlatformAccessory,
-  ) {
+    platform: ElectroluxBroadlinkACPlatform,
+    accessory: PlatformAccessory,
+    config: PlatformConfig,
 
+  ) {
+    this.config = config as ElectroluxBroadlinkPlatformConfig;
+    this.platform = platform;
+    this.accessory = accessory;
+
+    this.staleTimeout = this.config.minRequestFrequency ?? 200;      // how old the stored AC state can get
+    this.updateIntervalSeconds = this.config.updateInterval ?? 5;   // interval for async updates
+    this.updateInterval = this.updateIntervalSeconds * 1000;
 
 
 
@@ -100,22 +118,17 @@ export class electroluxACAccessory {
     }
 
 
-    if (this.platform.config.updateFrequency) {
-      this.updateInterval = this.platform.config.updateFrequency;
-      this.platform.log.debug('Setting updateFrequency from config.json :', this.platform.config.updateFrequency);
-    }
-
     // optional switches
 
 
     if (this.platform.config.auto) {
       this.showAuto = this.platform.config.auto as boolean;
-      this.platform.log.info('Setting Fan Swing switch :', this.platform.config.auto );
+      this.platform.log.info('Setting Auto switch :', this.platform.config.auto );
     }
 
     if (this.platform.config.selfClean) {
       this.showSelfClean = this.platform.config.selfClean as boolean;
-      this.platform.log.info('Setting Self Cleam switch :', this.platform.config.selfCleam );
+      this.platform.log.info('Setting Self Clean switch :', this.platform.config.selfClean );
     }
 
     if (this.platform.config.display) {
@@ -130,12 +143,8 @@ export class electroluxACAccessory {
 
     if (this.platform.config.quietAuto) {
       this.showQuietAuto = this.platform.config.quietAuto as boolean;
-      this.platform.log.info('Setting Fan Swing switch :', this.platform.config.quietAuto );
+      this.platform.log.info('Setting Quiet Auto switch :', this.platform.config.quietAuto );
     }
-
-
-
-
 
 
 
@@ -154,19 +163,10 @@ export class electroluxACAccessory {
     this.service = this.accessory.getService(this.platform.Service.HeaterCooler) ||
     this.accessory.addService(this.platform.Service.HeaterCooler);
 
-
-
     // default name on the Home app
     this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.name);
-    /*
-    this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).props.minValue = 17;
-    this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).props.maxValue = 30;
-    this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature).props.minValue = 17;
-    this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature).props.maxValue = 30;
-*/
     this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).props.minStep = 1;
     this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature).props.minStep = 1;
-
 
     // create handlers for required characteristics
     this.service.getCharacteristic(this.platform.Characteristic.Active)
@@ -203,7 +203,7 @@ export class electroluxACAccessory {
 
     // add additional switches for clean/display/auto
 
-    if (this.platform.config.auto) {
+    if (this.platform.config.auto as boolean === true) {
       this.swAuto = this.accessory.getService('Auto') ||
     this.accessory.addService(this.platform.Service.Switch, 'Auto', 'swAuto');
       this.swAuto.setCharacteristic(this.platform.Characteristic.Name, 'Auto');
@@ -211,7 +211,7 @@ export class electroluxACAccessory {
         .onSet(this.handleSetAuto.bind(this));
     }
 
-    if (this.platform.config.selfClean) {
+    if (this.platform.config.selfClean as boolean === true) {
       this.swClean = this.accessory.getService('Self Clean') ||
     this.accessory.addService(this.platform.Service.Switch, 'Self Clean', 'swClean');
       this.swClean.setCharacteristic(this.platform.Characteristic.Name, 'Self Clean');
@@ -219,7 +219,7 @@ export class electroluxACAccessory {
         .onSet(this.handleSetSelfClean.bind(this));
     }
 
-    if (this.platform.config.display) {
+    if (this.platform.config.display as boolean === true) {
       this.swDisplay = this.accessory.getService('LED Display') ||
     this.accessory.addService(this.platform.Service.Switch, 'LED Display', 'swDisplay');
       this.swDisplay.setCharacteristic(this.platform.Characteristic.Name, 'LED Display');
@@ -227,7 +227,7 @@ export class electroluxACAccessory {
         .onSet(this.handleSetDisplay.bind(this));
     }
 
-    if (this.platform.config.fanSwing) {
+    if (this.platform.config.fanSwing as boolean === true) {
       this.swFanSwing = this.accessory.getService('Fan Swing') ||
       this.accessory.addService(this.platform.Service.Switch, 'Fan Swing', 'swFanSwing');
       this.swFanSwing.setCharacteristic(this.platform.Characteristic.Name, 'Fan Swing');
@@ -235,7 +235,7 @@ export class electroluxACAccessory {
         .onSet(this.handleSetSwingModeSwitch.bind(this));
     }
 
-    if (this.platform.config.quietAuto) {
+    if (this.platform.config.quietAuto as boolean === true) {
       this.swQuietAuto = this.accessory.getService('Quiet Auto') ||
         this.accessory.addService(this.platform.Service.Switch, 'Quiet Auto', 'swQuietAuto');
       this.swQuietAuto.setCharacteristic(this.platform.Characteristic.Name, 'Quiet Auto');
@@ -244,7 +244,16 @@ export class electroluxACAccessory {
     }
 
 
+
+    setInterval(async () => {
+      const status:ElectroluxState = await this.checkLive();
+      await this.updateAllNow(status);
+    }, this.updateInterval);
   }
+
+
+
+
 
   // update all characteristics
   public async updateAllNow(status: ElectroluxState): Promise<void> {
@@ -274,47 +283,40 @@ export class electroluxACAccessory {
       HeatingThresholdTemperature).updateValue(status.temp);
 
 
-    if (this.platform.config.auto) {
+    if (this.platform.config.auto as boolean === true) {
       this.swAuto?.getCharacteristic(this.platform.Characteristic.
         On).updateValue(this.fromACisAutoMode(status));
     }
 
-    if (this.platform.config.selfClean) {
+    if (this.platform.config.selfClean as boolean === true) {
       this.swClean?.getCharacteristic(this.platform.Characteristic.
         On).updateValue(status.mldprf);
     }
 
-    if (this.platform.config.display) {
+    if (this.platform.config.display as boolean === true) {
       this.swDisplay?.getCharacteristic(this.platform.Characteristic.
         On).updateValue(status.scrdisp);
     }
 
-    if (this.platform.config.fanSwing) {
+    if (this.platform.config.fanSwing as boolean === true) {
       this.swFanSwing?.getCharacteristic(this.platform.Characteristic.
         On).updateValue(this.fromACisSwingMode(status));
     }
 
-    if (this.platform.config.quietAuto) {
+    if (this.platform.config.quietAuto as boolean === true) {
       this.swQuietAuto?.getCharacteristic(this.platform.Characteristic.
         On).updateValue(this.fromACisQuietAutoMode(status));
     }
   }
 
-
-
   private async setState(state: Partial<ElectroluxState>): Promise<ElectroluxState> {
     this.platform.log.debug('setState() called');
     return new Promise((resolve, reject) => {
-
       this.accessory.context.device.sendPacket(this.encode(state))
         .then((encryptedResponse) => {
           const decryptedResponse = this.accessory.context.device.decrypt(encryptedResponse);
-
-
-          // set the time of the next check
           this.lastSuccessfulGet = Date.now();
           this.acStateCache = (this.decode(decryptedResponse));
-
           this.platform.log.debug('\n setState() called, updated cache and returning this JSON from AC:\n',
             JSON.stringify(this.acStateCache));
 
@@ -327,6 +329,18 @@ export class electroluxACAccessory {
     });
   }
 
+  private async setName(name: string): Promise<ElectroluxState> {
+    this.platform.log.debug('setName() called');
+    return new Promise((resolve, reject) => {
+      this.platform.log.info('Setting AC name to \'', name, '\'');
+      this.accessory.context.device.sendPacket(this.encodeName(name))
+        .then()
+        .catch((err) => {
+
+          reject(err);
+        });
+    });
+  }
 
   // this is the promise that each get will run
   // idea being that it will only send a get request when there isnt already one
@@ -338,14 +352,11 @@ export class electroluxACAccessory {
     }
   }
 
-
-
   private async checkCache(): Promise<ElectroluxState> {
     return new Promise((resolve) => {
       resolve(this.checkCacheACState());
     });
   }
-
 
   private async checkLive(): Promise<ElectroluxState> {
     return new Promise((resolve) => {
@@ -362,6 +373,15 @@ export class electroluxACAccessory {
     this.acStateCache = state;
     this.platform.log.debug('\n checkLiveACState() called, updated cache with this JSON:\n',
       JSON.stringify(this.acStateCache));
+
+    this.platform.log.info('AC Status: ', this.accessory.context.device.name,
+      ', Power: ', state.ac_pwr,
+      ', Ambient Temp: ', state.envtemp,
+      ', Target Temp: ', state.temp,
+      ', AC Mode: ', state.ac_mode,
+      ', Fan Mode: ', state.ac_mark,
+      ', Fan Swing: ', state.ac_vdir,
+      ', Target Temp: ', state.temp);
     return state;
   }
 
@@ -370,8 +390,6 @@ export class electroluxACAccessory {
       JSON.stringify(this.acStateCache));
     return this.acStateCache;
   }
-
-
 
   // specific to 0x4f9b Electrolux/Kelvinator ACs
   protected encode(state: Partial<ElectroluxState>): Buffer {
@@ -398,6 +416,19 @@ export class electroluxACAccessory {
     return packet;
   }
 
+
+  // specific to 0x4f9b Electrolux/Kelvinator ACs
+  protected encodeName(name: string): Buffer {
+    this.platform.log.debug('encodeName() called');
+
+    // create data payload, 80 bytes, all zeros
+    const packet = Buffer.alloc(80, 0);
+
+    packet.write(name.substring(0, 64), 0x5, 'ascii');
+
+    return packet;
+  }
+
   protected decode(payload: Buffer): ElectroluxState {
     return this.getValue(
         JSON.parse(
@@ -416,11 +447,13 @@ export class electroluxACAccessory {
       // homekit uses 1 or 0 for these
       ac_pwr: state.ac_pwr,
       ac_vdir: state.ac_vdir,
-      scrdisp: state.scrdisp !== undefined ? Number(state.scrdisp) : undefined,
-      qtmode: state.qtmode,
-      mldprf: state.mldprf,
 
       // bool for homekit
+      scrdisp: state.scrdisp !== undefined ? Number(state.scrdisp) : undefined,
+      qtmode: state.qtmode !== undefined ? Number(state.qtmode) : undefined,
+      mldprf: state.mldprf !== undefined ? Number(state.mldprf) : undefined,
+
+      // bool for ease
       ac_heaterstatus: state.ac_heaterstatus !== undefined ? Number(state.ac_heaterstatus) : undefined,
       ac_indoorfanstatus: state.ac_indoorfanstatus !== undefined ? Number(state.ac_indoorfanstatus) : undefined,
       ac_compressorstatus: state.ac_compressorstatus !== undefined ? Number(state.ac_compressorstatus) : undefined,
@@ -623,11 +656,6 @@ export class electroluxACAccessory {
     const currentValue = this.fromACGetActive(status);
     this.platform.log.debug('Getting Active status', currentValue, ' JSON : ', JSON.stringify(status));
     this.updateAllNow(status);
-    this.platform.log.info('AC Status: ', this.accessory.context.device.name,
-      ' at ', this.accessory.context.device.host.address, ' :\n',
-      'Ambient Temp: ', status.envtemp,
-      ', Power: ', status.ac_pwr,
-      ', Target Temp: ', status.temp);
     return currentValue;
   }
 
@@ -681,12 +709,20 @@ export class electroluxACAccessory {
 
   public async handleSetSelfClean(value: CharacteristicValue): Promise<void> {
     let digit = 0;
-    const sw = value as boolean;
-    if (sw) {
+    if (value) {
       digit = 1;
     }
     this.platform.log.info(' Setting Self Clean switch :', digit);
     await this.setState({ mldprf: digit });
+  }
+
+  public async handleSetBeep(value: CharacteristicValue): Promise<void> {
+    let digit = 0;
+    if (value) {
+      digit = 1;
+    }
+    this.platform.log.info(' Setting Self Clean switch :', digit);
+    await this.setState({ qtmode: digit });
   }
 
   // sets auto, and turning off powers off
