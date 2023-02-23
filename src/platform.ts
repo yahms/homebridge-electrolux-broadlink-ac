@@ -47,7 +47,7 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
 
   async butFirstDiscover(): Promise<Device[]> {
     let discoveredACDevices:Device[] = [];
-    const searches = 5;
+    const searches = 10;
     for (let i = 1; searches; i++) {
       this.log.info('Running Broadlink Discovery #', i, ' of a possible ', searches);
       discoveredACDevices = await broadlink.discover();

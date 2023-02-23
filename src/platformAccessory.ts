@@ -303,7 +303,7 @@ export class electroluxACAccessory {
   }
 
   private async setState(state: Partial<ElectroluxState>): Promise<ElectroluxState> {
-    this.platform.log.debug('setState() called');
+    this.platform.log.debug('setState() called', JSON.stringify(state));
     return new Promise((resolve, reject) => {
       this.accessory.context.device.sendPacket(this.encode(state))
         .then((encryptedResponse) => {
@@ -312,6 +312,15 @@ export class electroluxACAccessory {
           this.acStateCache = (this.decode(decryptedResponse));
           this.platform.log.debug('\n setState() called, updated cache and returning this JSON from AC:\n',
             JSON.stringify(this.acStateCache));
+
+          this.platform.log.info('AC Status: ', this.accessory.displayName,
+            ', Power: ', state.ac_pwr,
+            ', Ambient Temp: ', state.envtemp,
+            ', Target Temp: ', state.temp,
+            ', AC Mode: ', this.getACModeName(state.ac_mode),
+            ', Fan Mode: ', this.getACMarkName(state.ac_mark),
+            ', Fan Swing: ', state.ac_vdir,
+            ', Target Temp: ', state.temp);
           resolve(this.acStateCache);
         })
         .catch((err) => {
@@ -366,14 +375,6 @@ export class electroluxACAccessory {
     this.platform.log.debug('\n checkLiveACState() called, updated cache with this JSON:\n',
       JSON.stringify(this.acStateCache));
 
-    this.platform.log.info('AC Status: ', this.accessory.context.device.name,
-      ', Power: ', state.ac_pwr,
-      ', Ambient Temp: ', state.envtemp,
-      ', Target Temp: ', state.temp,
-      ', AC Mode: ', state.ac_mode,
-      ', Fan Mode: ', state.ac_mark,
-      ', Fan Swing: ', state.ac_vdir,
-      ', Target Temp: ', state.temp);
     return state;
   }
 
@@ -479,6 +480,63 @@ export class electroluxACAccessory {
     }
     return currentValue;
   }
+
+  // AC Mode cool 0, heat 1, dry 2, fan 3, auto 4, heat_8 6
+  protected getACModeName(mode: number | undefined): string {
+    switch (mode) {
+      case 0: {
+        return 'Cool';
+      }
+      case 1: {
+        return 'Heat';
+      }
+      case 2: {
+        return 'Dry';
+      }
+      case 3: {
+        return 'Fan';
+      }
+      case 4: {
+        return 'Auto';
+      }
+      case 6: {
+        return 'Heat 8';
+      }
+      default: {
+        return 'Unknown';
+      }
+    }
+  }
+
+
+  // Fan speed auto 0, low 1, med 2, high 3, turbo 4, quiet 5
+  protected getACMarkName(mark: number | undefined): string {
+    switch (mark) {
+      case 0: {
+        return 'Auto';
+      }
+      case 1: {
+        return 'Low';
+      }
+      case 2: {
+        return 'Medium';
+      }
+      case 3: {
+        return 'High';
+      }
+      case 4: {
+        return 'Turbo';
+      }
+      case 6: {
+        return 'Quiet';
+      }
+      default: {
+        return 'Unknown';
+      }
+    }
+  }
+
+
 
   protected fromACGetCurrentState(status: ElectroluxState): number {
     let currentValue = this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE;
@@ -593,6 +651,23 @@ export class electroluxACAccessory {
     return ac_mark;
   }
 
+  public toDigit(bool: boolean): number {
+    if (bool) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+
+  public toBool(digit: number): boolean {
+    if (digit === 1) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+
   public normTemp(temp: number): number {
     if (temp < 17) {
       temp = 17;
@@ -653,68 +728,52 @@ export class electroluxACAccessory {
 
   public async handleSetActive(value: CharacteristicValue): Promise<void> {
     const ac_pwr = value as number;
-    this.platform.log.info(`'Setting AC Active : ${ac_pwr}'`);
+    this.platform.log.info('Setting AC Active to ', this.toBool(ac_pwr));
     await this.setState({ ac_pwr });
   }
 
   public async handleSetTargetState(value: CharacteristicValue): Promise<void> {
     const ac_mode = this.fromHKTargetStateGetACMode(value as number);
-    this.platform.log.info(`' Setting AC Mode : ${ac_mode}' (4 is auto)`);
+    this.platform.log.info('Setting AC Mode to ', this.getACModeName(ac_mode) );
     await this.setState({ ac_mode });
   }
 
+  // this is a number value from homekit
   public async handleSetSwingMode(value: CharacteristicValue): Promise<void> {
-    const ac_vdir = value as number;
-    this.platform.log.info(`' Setting Fan Swing : ${ac_vdir}'`);
-    await this.setState({ ac_vdir });
+    value = value as number;
+    this.platform.log.info(' Setting Fan Swing : ', this.toBool(value));
+    await this.setState({ ac_vdir: value});
   }
 
+  // this is for the dedicated switch, and is a boolean
   public async handleSetSwingModeSwitch(value: CharacteristicValue): Promise<void> {
+    value = value as boolean;
     this.platform.log.info(' Setting Fan Swing : ', value);
-    if (value) {
-      await this.setState({ ac_vdir: 1 });
-    } else {
-      await this.setState({ ac_vdir: 0 });
-    }
+    await this.setState({ ac_vdir: this.toDigit(value) });
   }
 
   public async handleSetRotationSpeed(value: CharacteristicValue): Promise<void> {
     const ac_mark = this.fromFanPercentGetACMark(value as number);
-    this.platform.log.info(`'Setting Fanspeed - Raw setting: ${ac_mark}, Fanspeed %: ${value}'`);
+    this.platform.log.info('Setting Fanspeed to ', this.getACMarkName(ac_mark));
     await this.setState({ ac_mark });
   }
 
   public async handleSetTargetTemp(value: CharacteristicValue): Promise<void> {
     const temp = this.normTemp(value as number);
-    this.platform.log.info(`'Setting Target Temp : asked for ${value}'`);
+    this.platform.log.info(`'Setting Target Temp to ${value}'`);
     await this.setState({ temp });
   }
 
   public async handleSetDisplay(value: CharacteristicValue): Promise<void> {
-    let digit = 0;
-    if (value) {
-      digit = 1;
-    }
-    this.platform.log.info(' Setting display :', value, ' ', digit);
-    await this.setState({ scrdisp: digit });
+    value = value as boolean;
+    this.platform.log.info(' Setting display :', value);
+    await this.setState({ scrdisp: this.toDigit(value) });
   }
 
   public async handleSetSelfClean(value: CharacteristicValue): Promise<void> {
-    let digit = 0;
-    if (value) {
-      digit = 1;
-    }
-    this.platform.log.info(' Setting Self Clean switch :', digit);
-    await this.setState({ mldprf: digit });
-  }
-
-  public async handleSetBeep(value: CharacteristicValue): Promise<void> {
-    let digit = 0;
-    if (value) {
-      digit = 1;
-    }
-    this.platform.log.info(' Setting Self Clean switch :', digit);
-    await this.setState({ qtmode: digit });
+    value = value as boolean;
+    this.platform.log.info(' Setting Self Clean :', value);
+    await this.setState({ mldprf: this.toDigit(value) });
   }
 
   // sets auto, and turning off powers off
