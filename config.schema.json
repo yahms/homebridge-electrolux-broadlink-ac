@@ -21,12 +21,12 @@
 				"description": "Maximum time to cache AC status data in milli seconds (0-1000)"
 			},
 			"updateInterval": {
-				"title": "Minimum Request Frequency",
+				"title": "Status Update Interval",
 				"type": "integer",
 				"required": false,
 				"default": 5,
 				"minimum": 2,
-				"maximum": 3,
+				"maximum": 30,
 				"description": "how many milliseconds between periodic updates in seconds (2 - 30)"
 			},
 			"auto": {
@@ -76,7 +76,7 @@
 						"macAddress": {
 							"title": "MAC Address",
 							"type": "string",
-							"default": "cc:00:00:00:00:11",
+							"placeholder": "cc:00:00:00:00:11",
 							"required": true,
 							"pattern": "^([A-Fa-f0-9]{2}:){5}[A-Fa-f0-9]{2}$",
 							"description": "The device with this MAC address will have these names applied"
@@ -84,14 +84,14 @@
 						"model": {
 							"title": "Model",
 							"type": "string",
-							"default": "AB123",
+							"placeholder": "AB123",
 							"required": false,
 							"description": "Enter a custom model number to be displayed in the device properties"
 						},
 						"manufacturer": {
 							"title": "Manufacturer",
 							"type": "string",
-							"default": "Electrolux",
+							"placeholder": "Electrolux",
 							"required": false,
 							"description": "Enter the manufacturer to be displayed in the device properties"
 						}
