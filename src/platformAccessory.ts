@@ -110,8 +110,9 @@ export class electroluxACAccessory {
     this.updateIntervalSeconds = this.config.updateInterval ?? 5;   // interval for async updates
     this.updateInterval = this.updateIntervalSeconds * 1000;
 
-    this.platform.log.info('Max time between reads :', this.staleTimeout, 'ms');
-    this.platform.log.info('Update Interval :', this.updateIntervalSeconds, 's');
+    let accessorySetUpMessage = ''.concat(this.accessory.displayName, '  Configuration:',
+      '\nMax time between reads        : ', this.staleTimeout.toString(), ' ms',
+      '\nUpdate Interval               : ', this.updateIntervalSeconds.toString(), ' s');
 
 
     // optional switches
@@ -119,28 +120,38 @@ export class electroluxACAccessory {
 
     if (this.platform.config.auto) {
       this.showAuto = this.platform.config.auto as boolean;
-      this.platform.log.info('Expose Auto switch :', this.platform.config.auto );
+      accessorySetUpMessage = accessorySetUpMessage.concat(
+        '\nExpose Auto switch            : ', this.platform.config.auto.toString());
     }
 
     if (this.platform.config.selfClean) {
       this.showSelfClean = this.platform.config.selfClean as boolean;
-      this.platform.log.info('Expose Self Clean switch :', this.platform.config.selfClean );
+      accessorySetUpMessage = accessorySetUpMessage.concat(
+        '\nExpose Self Clean Switch      : ', this.platform.config.selfClean.toString());
     }
 
     if (this.platform.config.display) {
       this.showDisplay = this.platform.config.display as boolean;
-      this.platform.log.info('Expose Diplay switch :', this.platform.config.display );
+      accessorySetUpMessage = accessorySetUpMessage.concat(
+        '\nExpose Display (Beep) Switch  : ', this.platform.config.display.toString());
     }
 
     if (this.platform.config.fanSwing) {
       this.showFanSwing = this.platform.config.fanSwing as boolean;
-      this.platform.log.info('Expose Fan Swing switch :', this.platform.config.fanSwing );
+      accessorySetUpMessage = accessorySetUpMessage.concat(
+        '\nExpose Fan Swing Switch       : ', this.platform.config.fanSwing.toString());
     }
 
     if (this.platform.config.quietAuto) {
       this.showQuietAuto = this.platform.config.quietAuto as boolean;
-      this.platform.log.info('Expose Quiet Auto switch :', this.platform.config.quietAuto );
+      accessorySetUpMessage = accessorySetUpMessage.concat(
+        '\nExpose Quiet Auto Switch      : ', this.platform.config.quietAuto.toString());
     }
+
+
+
+    this.platform.log.info(accessorySetUpMessage);
+
 
 
 

@@ -1,4 +1,4 @@
-import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic, AccessoryEventTypes } from 'homebridge';
+import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 import { ElectroluxBroadlinkPlatformConfig, namedDevice } from './types';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { electroluxACAccessory } from './platformAccessory';
@@ -59,16 +59,16 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
       }
 
       if (discoveredACDevices.length >= this.accessories.length && discoveredACDevices.length > 0) {
-        this.log.info('\nExpected to see at least', this.accessories.length, ' devices, saw ',
+        this.log.info('\nExpected to see at least', this.accessories.length, 'devices, saw',
           discoveredACDevices.length, '. Looking good.');
         break;
       } else if ((discoveredACDevices.length >= bestResult) && (i > thatllDo)) {
-        this.log.info('\nExpected to see at least', this.accessories.length, ' best weve seen is  ',
+        this.log.info('\nExpected to see at least', this.accessories.length, ' best we\'ve seen is',
           bestResult, '. That\'ll do.');
         break;
       } else if (i < maxSearches) {
-        this.log.info('\nExpected to see at least', this.accessories.length, ' devices, saw ',
-          discoveredACDevices.length, ', lets try again in 10 seconds... ');
+        this.log.info('\nExpected to see at least', this.accessories.length, 'devices, saw',
+          discoveredACDevices.length, ', lets try again in 10 seconds...');
         await new Promise(f => setTimeout(f, 10000));
       }
     }
@@ -133,10 +133,10 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
 
 
   async doAccessorySetup(acDevice: Device, accessory: PlatformAccessory): Promise<boolean> {
-    this.log.info('Authenticating to:', acDevice.name, ' at ', acDevice.host.address);
+    this.log.debug('Authenticating to:', acDevice.name, ' at ', acDevice.host.address);
     const authenticatedDevice = await acDevice.auth();
     if (authenticatedDevice) {
-      this.log.info('Authentication SUCCESS:', authenticatedDevice.name,
+      this.log.debug('Authentication SUCCESS:', authenticatedDevice.name,
         ' at ', authenticatedDevice.host.address, ' [', this.getMAC(authenticatedDevice), ']');
 
       // store the Device object on the accessory
@@ -185,11 +185,14 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
         const acc = await this.getCachedAccessory(dev);
         if (acc) {
 
+
+
           // set up previous created accessory
           await this.doAccessorySetup(dev, acc);
 
         } else {
 
+          this.log.info(dev.name, 'is NEW!');
           // create a new accessory
           const newAcc = new this.api.platformAccessory(dev.name, this.getUUID(dev));
 
@@ -203,7 +206,7 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
 
       } else {
         this.log.info('Skipping adding ', dev.name.toString(), ' at ', dev.host.address,
-          ' because it has an unsupported Device Type :', '0x'.concat(dev.deviceType.toString(16)));
+          ' because it has an unsupported Device Type : ', '0x'.concat(dev.deviceType.toString(16)));
       }
     }
 
