@@ -110,13 +110,12 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
   }
 
   isDeviceTypeElectrolux(device: Device): boolean {
-    const defDevices:string[] = ['0x4f9b'];
-    let allowed:string[] = [];
+    let defDevices:string[] = ['0x4f9b'];
     if (this.config?.allowedDevices) {
-      allowed = defDevices.concat(this.config.allowedDevices);
+      defDevices = defDevices.concat(this.config.allowedDevices);
     }
 
-    if (allowed.includes('0x'.concat(device.deviceType?.toString(16) ?? ''))) {
+    if (defDevices.includes('0x'.concat(device.deviceType?.toString(16) ?? ''))) {
       return true;
     }
     return false;
