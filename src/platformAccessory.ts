@@ -146,8 +146,8 @@ export class electroluxACAccessory {
 
     // set accessory information
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
-      .setCharacteristic(this.platform.Characteristic.Manufacturer, accessory.context.manufacturer as string)
-      .setCharacteristic(this.platform.Characteristic.Model, accessory.context.model)
+      .setCharacteristic(this.platform.Characteristic.Manufacturer, this.accessory.context.manufacturer as string)
+      .setCharacteristic(this.platform.Characteristic.Model, this.accessory.context.model)
       .setCharacteristic(this.platform.Characteristic.SerialNumber, accessory.context.serial as string);
 
 
@@ -157,7 +157,7 @@ export class electroluxACAccessory {
     this.accessory.addService(this.platform.Service.HeaterCooler);
 
     // default name on the Home app
-    this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.name);
+    this.service.setCharacteristic(this.platform.Characteristic.Name, this.accessory.displayName);
     this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).props.minStep = 1;
     this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature).props.minStep = 1;
 

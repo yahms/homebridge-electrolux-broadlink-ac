@@ -129,7 +129,6 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
       accessory.context.device = authenticatedDevice;
 
       const deviceConfig = this.getDeviceConfig(acDevice) ?? undefined;
-      accessory.context.name = deviceConfig?.name ?? authenticatedDevice.name;
       accessory.displayName = deviceConfig?.name ?? authenticatedDevice.name;
       accessory.context.model = deviceConfig?.model ?? 'Electrolux Family AC';
       accessory.context.manufacturer = deviceConfig?.manufacturer ?? 'Electrolux';
