@@ -15,7 +15,7 @@ As well as a different device type/ID, these also seem to have a different behav
 
 ## Installation
 
-1. This assumes you have homebrigdge installed and running.
+1. This assumes you have Homebridge installed and running. 
 
 2. Use the Home Comfort App to join your AC to your Wifi network.
 
@@ -23,11 +23,11 @@ As well as a different device type/ID, these also seem to have a different behav
 
 4. AC should show the Wifi symbol as solid.
 
-5. From the Homebridge Web GUI, search for this plugin ie 'Electrolux'. There are no configurable options at this point so it should be simple.
+5. From the Homebridge Web GUI, search for this plugin ie 'Electrolux'.
 
-This plugin should support multiple ACs on the same setwork because it will automatically discover and add them using the Broadlink Protocol Discovery, though i havent tested that in the real world.
+This plugin should support multiple ACs on the same setwork because it will automatically discover and add them using the Broadlink Protocol Discovery, though I havent tested multiple units in the real world.
 
-Currently any devices that have a Broadlink ID other than 0x4f9b will be ignored. Future plan is to allow adding other device IDs that use the same protocol and data structure as these.
+Currently any devices that have a Broadlink ID other than 0x4f9b will be ignored.
 
 ## Usage
 
@@ -54,7 +54,7 @@ This plugin maps the percentage to the 6 possible Fan Speed options:
 
 ### Temperatures
 
-The AC cannot take a value outside 17-30 degrees celsius so these limitations are hard set for now.
+The AC cannot take a value outside 17-30 degrees celsius so these limitations are hard set. Also, temps are in celcius.
 
 ### Fan Swing / Oscillate
 
@@ -64,30 +64,33 @@ Supports the native homekit switching the vertical swing on and off
 
 No timer, sleep, 
 
-### Auto, Display and Self Clean buttons
+### Optional buttons. you can add other buttons via the config.json (use Config UI-X)
 
-As well as the base AC device, this Plugin adds 3 Switches:
+As well as the base AC device, this Plugin adds some optional switches:
+[Shortcut Switches]
+These are effectively shortcuts to a pre-defined config. Each of these will fire off several commands. The switches will appear as on if anything else creates the same conditions these create (ie if the AC and Fan mode are auto, the Auto switch should appear as 'On'). The behavior of switching these switches off is to not change settings, to ensure current AC state is retained.
+* `AUTO` Switch will set both AC mode and Fan Speed to Auto. This switch should update and reflect as being *Off* once either Mode or Fan speed is set to a non-Auto setting.
+* `Quiet Auto` This is effectively a shortcut to turn on Auto mode, but in quiet fan mode. Same as the Auto switch, it should update in Honekit as being 'on' when the parameters are met ie AC mode=Auto, Fan mode = Quiet. Switching this switch off wont change the AC settings.
 
-* `AUTO` Enabling this will set both AC mode and Fan Speed to Auto. This switch should update and reflect as being *Off* once either Mode or Fan speed is set to a non-Auto setting
+[Function Switches]
 * `LED Display` Controls whether the LED Display is enabled or not. On my Kelvinator KSD50HWJ, the Beep setting is tied to this, so this switch will control both the LED Display and Beep.
-* `LED Display` Enables the Self Clean function, known internally within the AC as Mould Proof
+* `Self Clean` Enables the Self Clean function, known internally within the AC as Mould Proof
+* `Fan Swing` Another way to turn on oscilate/fan swing
+
+[Plugin switches]
+* `De-Beep` On some models, the LED Display and Beep is switched back on when you turn the unit on or off. De-Beep adds the step of turning the LED display off during these moments. (you will get 1 beep still as part of the on or off command, that is outside the control of this plugin)
 
 
 ## Other
 
+* you can Apply your own names to an AC unit by specifying its Mac Address
+
+* you can also specify other Broadlink device types
+
 ### To do
 
-more documentation
+make it work better?
 
-allow other device types or setting of variables
-
-### Operation
-
-Any time a command is sent to the AC, it returns a JSON string with all parameters. When Homekit sends get requests it sends a bunch.
-
-Not really knowing how to code, I created a 200ms timer and a rudimentary cache, so if a response has come back and updated the cache in the last 200ms, the request for info will just read from cache.
-
-This is to avoid a storm of requests and avoid slowing down homebridge. IDeally id like to make better use of Typescript/Javascript promises, but hey, im an amateur.
 
 ### Credits
 
