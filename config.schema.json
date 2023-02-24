@@ -27,7 +27,7 @@
 				"default": 5,
 				"minimum": 2,
 				"maximum": 30,
-				"description": "how many milliseconds between periodic updates in seconds (2 - 30)"
+				"description": "How many seconds between periodic updates (2 - 30)"
 			},
 			"auto": {
 				"title": "Auto Switch",
@@ -48,7 +48,7 @@
 				"description": "Expose LED Display/Beep switch?"
 			},
 			"fanSwing": {
-				"title": "Exrtra Fan Swing Switch",
+				"title": "Extra Fan Swing Switch",
 				"type": "boolean",
 				"required": false,
 				"description": "Expose a separate Fan Swing switch? (in addition to the native support)"
@@ -58,6 +58,12 @@
 				"type": "boolean",
 				"required": false,
 				"description": "Expose the Quiet Auto Mode switch? (sets AC mode to Auto, Fan mode to Quiet)"
+			},
+			"deBeep": {
+				"title": "De-Beep Switch",
+				"type": "boolean",
+				"required": false,
+				"description": "Automatically turn off the Display/Beep when you turn the AC on via the Active/Auto/Quiet-Auto switches (some models turn the beep back on when turned on)"
 			},
 			"namedDevices": {
 				"type": "array",

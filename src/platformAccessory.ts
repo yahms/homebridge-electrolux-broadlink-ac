@@ -46,7 +46,6 @@ export interface ElectroluxState<T = boolean | number> {
 
 }
 
-
 export class electroluxACAccessory {
   private service: Service;
 
@@ -54,26 +53,20 @@ export class electroluxACAccessory {
   private readonly accessory: PlatformAccessory;
   private readonly config: ElectroluxBroadlinkPlatformConfig;
 
-
   private swAuto?: Service;
   private swClean?: Service;
   private swDisplay?: Service;
   private swFanSwing?: Service;
   private swQuietAuto?: Service;
+  private swDeBeep?: Service;
 
-  public TYPE = 'ELECTROLUX_OEM';
-  public deviceType = 0x4f9b;
+  //public TYPE = 'ELECTROLUX_OEM';
+  //public deviceType = 0x4f9b;
   public staleTimeout = 200;      // how old the stored AC state can get
   public updateIntervalSeconds = 5;   // interval for async updates
   public updateInterval = 5000;
   public LowTempLimit = 17;
   public HighTempLimit = 30;
-
-  private showAuto = false;
-  private showQuietAuto = false;
-  private showDisplay = false;
-  private showSelfClean = false;
-  private showFanSwing = false;
 
   private acStateCache = {
     ac_pwr: 0,
@@ -106,53 +99,32 @@ export class electroluxACAccessory {
     this.platform = platform;
     this.accessory = accessory;
 
+    accessory.context.deBeepState as boolean;
+
     this.staleTimeout = this.config.minRequestFrequency ?? 200;      // how old the stored AC state can get
     this.updateIntervalSeconds = this.config.updateInterval ?? 5;   // interval for async updates
     this.updateInterval = this.updateIntervalSeconds * 1000;
 
-    let accessorySetUpMessage = ''.concat(this.accessory.displayName, '  Configuration:',
-      '\nMax time between reads        : ', this.staleTimeout.toString(), ' ms',
-      '\nUpdate Interval               : ', this.updateIntervalSeconds.toString(), ' s');
-
+    let setUpMsg = ''.concat(this.accessory.displayName, '  Configuration:',
+      '\nMax time between reads     : ', this.staleTimeout.toString(), ' ms',
+      '\nUpdate Interval            : ', this.updateIntervalSeconds.toString(), ' s');
 
     // optional switches
+    setUpMsg = setUpMsg.concat(
+      '\nExpose Auto switch         : ', this.platform.config.auto?.toString() ?? 'Not set');
+    setUpMsg = setUpMsg.concat(
+      '\nExpose Self Clean Switch   : ', this.platform.config.selfClean?.toString() ?? 'Not set');
+    setUpMsg = setUpMsg.concat(
+      '\nExpose LED (Beep) Switch   : ', this.platform.config.display?.toString() ?? 'Not set');
+    setUpMsg = setUpMsg.concat(
+      '\nExpose Fan Swing Switch    : ', this.platform.config.fanSwing?.toString() ?? 'Not set');
+    setUpMsg = setUpMsg.concat(
+      '\nExpose Quiet Auto Switch   : ', this.platform.config.quietAuto?.toString() ?? 'Not set');
+    setUpMsg = setUpMsg.concat(
+      '\nExpose De-Beep             : ', this.platform.config.deBeep?.toString() ?? 'Not set');
 
-
-    if (this.platform.config.auto) {
-      this.showAuto = this.platform.config.auto as boolean;
-      accessorySetUpMessage = accessorySetUpMessage.concat(
-        '\nExpose Auto switch            : ', this.platform.config.auto.toString());
-    }
-
-    if (this.platform.config.selfClean) {
-      this.showSelfClean = this.platform.config.selfClean as boolean;
-      accessorySetUpMessage = accessorySetUpMessage.concat(
-        '\nExpose Self Clean Switch      : ', this.platform.config.selfClean.toString());
-    }
-
-    if (this.platform.config.display) {
-      this.showDisplay = this.platform.config.display as boolean;
-      accessorySetUpMessage = accessorySetUpMessage.concat(
-        '\nExpose Display (Beep) Switch  : ', this.platform.config.display.toString());
-    }
-
-    if (this.platform.config.fanSwing) {
-      this.showFanSwing = this.platform.config.fanSwing as boolean;
-      accessorySetUpMessage = accessorySetUpMessage.concat(
-        '\nExpose Fan Swing Switch       : ', this.platform.config.fanSwing.toString());
-    }
-
-    if (this.platform.config.quietAuto) {
-      this.showQuietAuto = this.platform.config.quietAuto as boolean;
-      accessorySetUpMessage = accessorySetUpMessage.concat(
-        '\nExpose Quiet Auto Switch      : ', this.platform.config.quietAuto.toString());
-    }
-
-
-
-    this.platform.log.info(accessorySetUpMessage);
-
-
+    // dumps variables and optional switch config to console
+    this.platform.log.info(setUpMsg);
 
 
     // set accessory information
@@ -160,7 +132,6 @@ export class electroluxACAccessory {
       .setCharacteristic(this.platform.Characteristic.Manufacturer, this.accessory.context.manufacturer as string)
       .setCharacteristic(this.platform.Characteristic.Model, this.accessory.context.model)
       .setCharacteristic(this.platform.Characteristic.SerialNumber, accessory.context.serial as string);
-
 
     // get the  service if it exists, otherwise create a new  service
     // you can create multiple services for each accessory
@@ -247,16 +218,38 @@ export class electroluxACAccessory {
         .onSet(this.handleSetQuietAuto.bind(this));
     }
 
+    if (this.platform.config.deBeep as boolean === true) {
+      this.swDeBeep = this.accessory.getService('De-Beep') ||
+        this.accessory.addService(this.platform.Service.Switch, 'De-Beep', 'swDeBeep');
+      this.swDeBeep.setCharacteristic(this.platform.Characteristic.Name, 'De-Beep');
+      this.swDeBeep.getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.handleSetDeBeepState.bind(this))
+        .onGet(this.handleGetDeBeepState.bind(this));
+    }
 
 
+    // should chain promises here!!
     setInterval(async () => {
+
+      // jhave a promise that does a check state , after waiting for the update interval
+
+      // then do a promise race to see whcih one finishes first
+
       const status:ElectroluxState = await this.checkLive();
       await this.updateAllNow(status);
     }, this.updateInterval);
   }
 
 
+  public async completeElectroluxACAccessory(): Promise<boolean> {
 
+    // dp final tasks here, like pulling model from the AC, maybe writing the name to the AC?
+
+    // this can be called from the platform then
+
+
+    return true;
+  }
 
 
   // update all characteristics
@@ -321,17 +314,19 @@ export class electroluxACAccessory {
           const decryptedResponse = this.accessory.context.device.decrypt(encryptedResponse);
           this.lastSuccessfulGet = Date.now();
           this.acStateCache = (this.decode(decryptedResponse));
+
           this.platform.log.debug('\n setState() called, updated cache and returning this JSON from AC:\n',
             JSON.stringify(this.acStateCache));
 
-          this.platform.log.info('AC Status: ', this.accessory.displayName,
-            ', Power: ', state.ac_pwr,
-            ', Ambient Temp: ', state.envtemp,
-            ', Target Temp: ', state.temp,
-            ', AC Mode: ', this.getACModeName(state.ac_mode),
-            ', Fan Mode: ', this.getACMarkName(state.ac_mark),
-            ', Fan Swing: ', state.ac_vdir,
-            ', Target Temp: ', state.temp);
+          this.platform.log.info(this.accessory.displayName, ' Status :',
+            ' Power: ', this.acStateCache.ac_pwr,
+            ', Ambient Temp: ', this.acStateCache.envtemp,
+            ',\n Target Temp: ', this.acStateCache.temp,
+            ', AC Mode: ', this.getACModeName(this.acStateCache.ac_mode),
+            ', Fan Mode: ', this.getACMarkName(this.acStateCache.ac_mark),
+            ', Fan Swing: ', this.acStateCache.ac_vdir,
+            ', Display: ', this.acStateCache.scrdisp,
+          );
           resolve(this.acStateCache);
         })
         .catch((err) => {
@@ -348,7 +343,6 @@ export class electroluxACAccessory {
       this.accessory.context.device.sendPacket(this.encodeName(name))
         .then()
         .catch((err) => {
-
           reject(err);
         });
     });
@@ -419,7 +413,6 @@ export class electroluxACAccessory {
     packet.writeUIntLE(d_Checksum, 0x06, 2);
     return packet;
   }
-
 
   // specific to 0x4f9b Electrolux/Kelvinator ACs
   protected encodeName(name: string): Buffer {
@@ -519,7 +512,6 @@ export class electroluxACAccessory {
     }
   }
 
-
   // Fan speed auto 0, low 1, med 2, high 3, turbo 4, quiet 5
   protected getACMarkName(mark: number | undefined): string {
     switch (mark) {
@@ -546,8 +538,6 @@ export class electroluxACAccessory {
       }
     }
   }
-
-
 
   protected fromACGetCurrentState(status: ElectroluxState): number {
     let currentValue = this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE;
@@ -741,6 +731,9 @@ export class electroluxACAccessory {
     const ac_pwr = value as number;
     this.platform.log.info('Setting AC Active to ', this.toBool(ac_pwr));
     await this.setState({ ac_pwr });
+    if (this.accessory.context.deBeepState) {
+      await this.setState({ scrdisp: 0 });
+    }
   }
 
   public async handleSetTargetState(value: CharacteristicValue): Promise<void> {
@@ -787,14 +780,21 @@ export class electroluxACAccessory {
     await this.setState({ mldprf: this.toDigit(value) });
   }
 
+
+
   // sets auto, and turning off powers off
   public async handleSetAuto(value: CharacteristicValue): Promise<void> {
     if (value) {
-      await this.setState({ ac_pwr: 1 });
       await this.setState({ ac_mode: acMode.AUTO });
+      if (this.accessory.context.deBeepState) {
+        await this.setState({ scrdisp: 0 });
+      }
       await this.setState({ ac_mark: fanSpeed.AUTO });
     } else if (!value) {
       await this.setState({ ac_pwr: 0 });
+      if (this.accessory.context.deBeepState) {
+        await this.setState({ scrdisp: 0 });
+      }
     }
     this.platform.log.info(' Setting Auto mode :', value);
   }
@@ -803,16 +803,21 @@ export class electroluxACAccessory {
   public async handleSetQuietAuto(value: CharacteristicValue): Promise<void> {
     if (value) {
       // const response =
-      await this.setState({ ac_pwr: 1 });
       await this.setState({ ac_mode: acMode.AUTO });
+      if (this.accessory.context.deBeepState) {
+        await this.setState({ scrdisp: 0 });
+      }
       await this.setState({ ac_mark: fanSpeed.QUIET });
       // this.updateAll(response);
     } else if (!value) {
       // const response =
       await this.setState({ ac_pwr: 0 });
+      if (this.accessory.context.deBeepState) {
+        await this.setState({ scrdisp: 0 });
+      }
       // this.updateAll(response);
     }
-    this.platform.log.info(' Setting QuietAuto mode :', value);
+    this.platform.log.info(' Setting Quiet-Auto mode :', value);
   }
 
   // Get model in form of string
@@ -821,6 +826,15 @@ export class electroluxACAccessory {
     return status.modelnumber;
   }
 
+  // Get model in form of string
+  public async handleSetDeBeepState(value: CharacteristicValue): Promise<void> {
+    this.accessory.context.deBeepState = value as boolean;
+  }
+
+  // Get model in form of string
+  public async handleGetDeBeepState(): Promise<boolean> {
+    return this.accessory.context.deBeepState ?? false;
+  }
 
 }
 
