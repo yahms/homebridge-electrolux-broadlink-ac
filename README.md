@@ -67,6 +67,7 @@ No timer, sleep,
 ### Optional buttons. you can add other buttons via the config.json (use Config UI-X)
 
 As well as the base AC device, this Plugin adds some optional switches:
+
 [Shortcut Switches]
 These are effectively shortcuts to a pre-defined config. Each of these will fire off several commands. The switches will appear as on if anything else creates the same conditions these create (ie if the AC and Fan mode are auto, the Auto switch should appear as 'On'). The behavior of switching these switches off is to not change settings, to ensure current AC state is retained.
 * `AUTO` Switch will set both AC mode and Fan Speed to Auto. This switch should update and reflect as being *Off* once either Mode or Fan speed is set to a non-Auto setting.
