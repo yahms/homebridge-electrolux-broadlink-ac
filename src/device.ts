@@ -97,8 +97,10 @@ export default class Device {
         const error = response.subarray(0x22, 0x24);
         const errorCode = error[0] | (error[1] << 8);
         if (!errorCode) {
+          // this.socket.close;
           resolve(response);
         } else {
+          // this.socket.close;
           reject(new Error(`${errorCode}`));
         }
       });

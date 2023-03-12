@@ -231,12 +231,8 @@ export class electroluxACAccessory {
     // should chain promises here!!
     setInterval(async () => {
 
-      // jhave a promise that does a check state , after waiting for the update interval
-
-      // then do a promise race to see whcih one finishes first
-
-      const status:ElectroluxState = await this.checkLive();
-      await this.updateAllNow(status);
+      // const status:ElectroluxState = await this.checkLive();
+      await this.updateAllNow(await this.checkLive());
     }, this.updateInterval);
   }
 
@@ -374,6 +370,7 @@ export class electroluxACAccessory {
     this.platform.log.debug('checkLiveACState() called');
     const encryptedResponse = await this.accessory.context.device.sendPacket(this.encode({}));
     const decryptedResponse = await this.accessory.context.device.decrypt(encryptedResponse);
+    this.platform.log.debug('decrypted response: ', decryptedResponse.toString('ascii'));
     const state = this.decode(decryptedResponse);
     this.lastSuccessfulGet = Date.now();
     this.acStateCache = state;
@@ -427,12 +424,23 @@ export class electroluxACAccessory {
   }
 
   protected decode(payload: Buffer): ElectroluxState {
-    return this.getValue(
+    this.platform.log.debug('decode() called \n "', payload.subarray(0x0e).toString('ascii'), '"');
+    try {
+      return this.getValue(
         JSON.parse(
-          payload.subarray(0x0e).toString('ascii'),
+          payload.subarray(0x0e, 0x0e + payload.readInt16LE(0x0a)).toString('ascii'),
         ) as ElectroluxState<number>,
         Boolean,
-    ) as ElectroluxState;
+      ) as ElectroluxState;
+    } catch (error) {
+      this.platform.log.debug('Error parsing JSON:\n', error, payload.subarray(0x0e).toString('ascii'));
+      this.platform.log.debug('JSON string length:\n', error, payload.subarray(0x0e).toString('ascii').length);
+      this.platform.log.debug('Payload length (from packet):\n', payload.readInt16LE(0x0a));
+
+      return JSON.parse('{}');
+    }
+
+
   }
 
   protected getValue<I extends number | boolean, O extends number | boolean>(
