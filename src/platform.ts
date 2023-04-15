@@ -192,7 +192,7 @@ export class ElectroluxBroadlinkACPlatform implements DynamicPlatformPlugin {
         } else {
 
           this.log.info(dev.name, 'is NEW!');
-          
+
           // create a new accessory
           const newAcc = new this.api.platformAccessory(this.getDeviceConfig(dev)?.name ?? dev.name, this.getUUID(dev));
 

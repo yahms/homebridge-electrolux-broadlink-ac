@@ -34,7 +34,8 @@ export interface ElectroluxState<T = boolean | number> {
 
   // non boolean variables for homekit
   ac_mark: number;              // Fan speed auto 0, low 1, med 2, high 3, turbo 4, quiet 5
-  ac_mode: number;              // AC Mode cool 0, heat 1, dry 2, fan 3, auto 4, heat_8 6
+  ac_mode: number;              // AC Mode cool 0, heat 1, dry 2, fan 3, auto 4, heat_8 6;
+  drmode: number;
   temp: number;                 // Target temp
   envtemp: number;              // Ambient temp
 
@@ -184,7 +185,16 @@ export class electroluxACAccessory {
       this.swAuto.setCharacteristic(this.platform.Characteristic.Name, 'Auto');
       this.swAuto.getCharacteristic(this.platform.Characteristic.On)
         .onSet(this.handleSetAuto.bind(this));
+    } else {
+      this.swAuto = this.accessory.getService('LED Display') || undefined;
+      if (this.swAuto) {
+        this.accessory.removeService(this.swAuto);
+      }
     }
+
+
+
+
 
     if (this.platform.config.selfClean as boolean === true) {
       this.swClean = this.accessory.getService('Self Clean') ||
@@ -192,7 +202,13 @@ export class electroluxACAccessory {
       this.swClean.setCharacteristic(this.platform.Characteristic.Name, 'Self Clean');
       this.swClean.getCharacteristic(this.platform.Characteristic.On)
         .onSet(this.handleSetSelfClean.bind(this));
+    } else {
+      this.swClean = this.accessory.getService('LED Display') || undefined;
+      if (this.swClean) {
+        this.accessory.removeService(this.swClean);
+      }
     }
+
 
     if (this.platform.config.display as boolean === true) {
       this.swDisplay = this.accessory.getService('LED Display') ||
@@ -200,6 +216,11 @@ export class electroluxACAccessory {
       this.swDisplay.setCharacteristic(this.platform.Characteristic.Name, 'LED Display');
       this.swDisplay.getCharacteristic(this.platform.Characteristic.On)
         .onSet(this.handleSetDisplay.bind(this));
+    } else {
+      this.swDisplay = this.accessory.getService('LED Display') || undefined;
+      if (this.swDisplay) {
+        this.accessory.removeService(this.swDisplay);
+      }
     }
 
     if (this.platform.config.fanSwing as boolean === true) {
@@ -208,6 +229,11 @@ export class electroluxACAccessory {
       this.swFanSwing.setCharacteristic(this.platform.Characteristic.Name, 'Fan Swing');
       this.swFanSwing.getCharacteristic(this.platform.Characteristic.On)
         .onSet(this.handleSetSwingModeSwitch.bind(this));
+    } else {
+      this.swFanSwing = this.accessory.getService('LED Display') || undefined;
+      if (this.swFanSwing) {
+        this.accessory.removeService(this.swFanSwing);
+      }
     }
 
     if (this.platform.config.quietAuto as boolean === true) {
@@ -216,6 +242,11 @@ export class electroluxACAccessory {
       this.swQuietAuto.setCharacteristic(this.platform.Characteristic.Name, 'Quiet Auto');
       this.swQuietAuto.getCharacteristic(this.platform.Characteristic.On)
         .onSet(this.handleSetQuietAuto.bind(this));
+    } else {
+      this.swQuietAuto = this.accessory.getService('LED Display') || undefined;
+      if (this.swQuietAuto) {
+        this.accessory.removeService(this.swQuietAuto);
+      }
     }
 
     if (this.platform.config.deBeep as boolean === true) {
@@ -225,6 +256,11 @@ export class electroluxACAccessory {
       this.swDeBeep.getCharacteristic(this.platform.Characteristic.On)
         .onSet(this.handleSetDeBeepState.bind(this))
         .onGet(this.handleGetDeBeepState.bind(this));
+    } else {
+      this.swDeBeep = this.accessory.getService('LED Display') || undefined;
+      if (this.swDeBeep) {
+        this.accessory.removeService(this.swDeBeep);
+      }
     }
 
 
@@ -466,6 +502,7 @@ export class electroluxACAccessory {
       // number ranges for these
       ac_mode: state.ac_mode,
       ac_mark: state.ac_mark,
+      drmode: state.drmode,
       temp: state.temp,
       envtemp: state.envtemp,
 
@@ -549,11 +586,11 @@ export class electroluxACAccessory {
 
   protected fromACGetCurrentState(status: ElectroluxState): number {
     let currentValue = this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE;
-    if (status.ac_indoorfanstatus && status.ac_compressorstatus) {
-      currentValue = this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
-    } else if (status.ac_indoorfanstatus && status.ac_heaterstatus) {
+    if (status.ac_compressorstatus && status.ac_indoorfanstatus && status.drmode === 4) {
       currentValue = this.platform.Characteristic.CurrentHeaterCoolerState.HEATING;
-    } else if (status.ac_indoorfanstatus && !status.ac_heaterstatus && !status.ac_compressorstatus) {
+    } else if (status.ac_compressorstatus && status.ac_indoorfanstatus && status.drmode === 0) {
+      currentValue = this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
+    } else if (status.ac_indoorfanstatus || status.ac_indoorfanstatus) {
       currentValue = this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
     }
     return currentValue;
