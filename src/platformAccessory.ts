@@ -265,14 +265,14 @@ export class electroluxACAccessory {
     // on / off
     this.fan.getCharacteristic(this.platform.Characteristic.Active)
       // .onGet(this.xhandleGetActive.bind(this))
-      .onSet(this.handleSetFanActive.bind(this));
+      .onSet(this.handleSetFanMode.bind(this));
 
     // current state ( inactive, idle, blowing_air )
     //                    0    /  1  /    2
     this.fan.getCharacteristic(this.platform.Characteristic.CurrentFanState);
     // .onGet(this.handleGetFanCurrentState.bind(this));
 
-    // target state ie Fan mode or AC mode
+    // target state is fan auto speed or not
     this.fan.getCharacteristic(this.platform.Characteristic.TargetFanState)
       // .onGet(this.handleGetFanTargetState.bind(this))
       .onSet(this.handleSetFanTargetState.bind(this));
@@ -380,7 +380,7 @@ export class electroluxACAccessory {
         this.accessory.addService(this.platform.Service.Switch, 'AC Fan Mode', 'AC Fan Mode')
           .setCharacteristic(this.platform.Characteristic.ConfiguredName, 'AC Fan Mode');
       this.swFanMode.getCharacteristic(this.platform.Characteristic.On)
-        .onSet(this.handleSetFanTargetState.bind(this));
+        .onSet(this.handleSetFanMode.bind(this));
     } else {
       this.swFanMode = this.accessory.getService('AC Fan Mode') || undefined;
       if (this.swFanMode) {
@@ -394,7 +394,7 @@ export class electroluxACAccessory {
         this.accessory.addService(this.platform.Service.Switch, 'AC Dry Mode', 'AC Dry Mode')
           .setCharacteristic(this.platform.Characteristic.ConfiguredName, 'AC Dry Mode');
       this.swDryMode.getCharacteristic(this.platform.Characteristic.On)
-        .onSet(this.handleSetFanTargetState.bind(this));
+        .onSet(this.handleSetDryMode.bind(this));
     } else {
       this.swDryMode = this.accessory.getService('AC Dry Mode') || undefined;
       if (this.swDryMode) {
@@ -722,24 +722,27 @@ export class electroluxACAccessory {
   // setting fan to 'On' enables Fan mode on the AC, and sets fan auto mode
   // setting to off turns off the AC
 
-  public async handleSetFanActive(value: CharacteristicValue): Promise<void> {
-    if (value === 1) {
-      this.platform.log.info('Setting AC to Fan Mode');
-      await this.setState({ ac_mode: 3 });
-      if (this.accessory.context.deBeepState) {
-        await this.setState({ scrdisp: 0 });
-      }
-    } else {
-      this.platform.log.info('Fan switched off, setting AC to OFF');
-      await this.setState({ ac_pwr: 0 });
-    }
-  }
 
   // for the dedicated Fan Mode switch configurable in settings
   public async handleSetFanMode(value: CharacteristicValue): Promise<void> {
     if (value) {
       this.platform.log.info('Setting AC to Fan Mode');
       await this.setState({ ac_mode: 3 });
+      if (this.accessory.context.deBeepState) {
+        await this.setState({ scrdisp: 0 });
+      }
+    } else {
+      this.platform.log.info('Setting AC (via Fan Mode switch) Off');
+      await this.setState({ ac_pwr: 0 });
+    }
+  }
+
+
+  // for the dedicated Fan Mode switch configurable in settings
+  public async handleSetDryMode(value: CharacteristicValue): Promise<void> {
+    if (value) {
+      this.platform.log.info('Setting AC to Fan Mode');
+      await this.setState({ ac_mode: 2 });
       if (this.accessory.context.deBeepState) {
         await this.setState({ scrdisp: 0 });
       }
