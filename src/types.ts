@@ -9,7 +9,9 @@ export type ElectroluxBroadlinkPlatformConfig = {
   selfClean?: boolean;
   display?: boolean;
   quietAuto?: boolean;
-  deBeep: boolean;
+  deBeep?: boolean;
+  fanMode?: boolean;
+  dryMode?: boolean;
   fanSwing?: boolean;
   namedDevices?: Array<namedDevice>;
   allowedDevices?: string[];

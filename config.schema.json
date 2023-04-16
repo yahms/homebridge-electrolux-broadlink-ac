@@ -33,37 +33,49 @@
 				"title": "Auto Switch",
 				"type": "boolean",
 				"required": false,
-				"description": "Expose an Auto Mode switch? (plain on off switch, but switching on also switches to AC Auto and Fan Auto"
+				"description": "Aircon Auto Mode switch. Switch On to set AC to Auto (and power on), switch Off to turn AC off"
 			},
 			"selfClean": {
 				"title": "Self Clean Switch",
 				"type": "boolean",
 				"required": false,
-				"description": "Expose the Self Clean switch?"
+				"description": "Aircon Self-Clean switch. Controls self clean function"
 			},
 			"display": {
 				"title": "LED Display Switch",
 				"type": "boolean",
 				"required": false,
-				"description": "Expose LED Display/Beep switch?"
+				"description": "LED and Beep switch. Controls the Beep/LED Display (note, the AC re-enables the beep - use De-Beep for long term solution)"
 			},
 			"fanSwing": {
-				"title": "Extra Fan Swing Switch",
+				"title": "Fan Swing Switch",
 				"type": "boolean",
 				"required": false,
-				"description": "Expose a separate Fan Swing switch? (in addition to the native support)"
+				"description": "Fan Swing/Oscillate switch. Enables Air Oscillation on the AC, in addition to the controls via the Fan accessory"
 			},
 			"quietAuto": {
 				"title": "Quiet Auto Switch",
 				"type": "boolean",
 				"required": false,
-				"description": "Expose the Quiet Auto Mode switch? (sets AC mode to Auto, Fan mode to Quiet)"
+				"description": "Aircon Auto Mode switch, but sets the Fan to Quiet Mode"
 			},
 			"deBeep": {
 				"title": "De-Beep Switch",
 				"type": "boolean",
 				"required": false,
-				"description": "Automatically turn off the Display/Beep when you turn the AC on via the Active/Auto/Quiet-Auto switches (some models turn the beep back on when turned on)"
+				"description": "This switch tells the plugin to turn off the LED/Beep every time the AC turns on, which is when the AC re-enables the LED/Beep. You'll always get a beep when powering on, but with De-Beep it shouldnt beep after that"
+			},
+			"fanMode": {
+				"title": "Fan Mode Switch",
+				"type": "boolean",
+				"required": false,
+				"description": "Aircon Fan Mode switch. Switch On to set AC to Fan Mode (and power on), switch Off to turn AC off. Similar but slightly different to the behavior of the Fan Accessory that is created for the AC by this plugin"
+			},
+			"dryMode": {
+				"title": "Dry Mode Switch",
+				"type": "boolean",
+				"required": false,
+				"description": "Aircon Dry Mode switch. Switch On to set AC to Dry Mode (and power on), switch Off to turn AC off."
 			},
 			"namedDevices": {
 				"type": "array",
