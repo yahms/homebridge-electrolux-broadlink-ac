@@ -77,6 +77,12 @@
 				"required": false,
 				"description": "Aircon Dry Mode switch. Switch On to set AC to Dry Mode (and power on), switch Off to turn AC off."
 			},
+			"fanQuiet": {
+				"title": "Fan Quiet Switch",
+				"type": "boolean",
+				"required": false,
+				"description": "Aircon Fan Quiet switch. Switch On to set Fan to Quiet Speed, switch Off to turn Fan to Auto"
+			},
 			"namedDevices": {
 				"type": "array",
 				"items": {

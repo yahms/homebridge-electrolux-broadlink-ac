@@ -30,6 +30,7 @@ export enum isAC {
   dryModeOn = 6,
   fanSwingOn = 7,
   selfCleanOn = 8,
+  fanSpeedQuiet = 11,
 
   displayOn = 9,
   fanSpeedAuto = 10,
@@ -71,7 +72,7 @@ export interface ElectroluxState<T = boolean | number> {
   // non boolean variables for homekit
   ac_mark: number;              // Fan speed auto 0, low 1, med 2, high 3, turbo 4, quiet 5
   ac_mode: number;              // AC Mode cool 0, heat 1, dry 2, fan 3, auto 4, heat_8 6;
-  drmode: number;
+  drmode: number;               // possible way of monitoring heating vs cooling, 0=heat, 4=cool?
   temp: number;                 // Target temp
   envtemp: number;              // Ambient temp
 
@@ -106,6 +107,7 @@ export class electroluxACAccessory {
   private swQuietAuto?: Service;
   private swFanMode?: Service;
   private swDryMode?: Service;
+  private swFanQuiet?: Service;
   // aircon functions
   private swClean?: Service;
   private swFanSwing?: Service;
@@ -120,6 +122,7 @@ export class electroluxACAccessory {
     swQuietAuto: false,
     swFanMode: false,
     swDryMode: false,
+    swFanQuiet: true,
     //
     swClean: false,
     swFanSwing: false,
@@ -150,6 +153,7 @@ export class electroluxACAccessory {
     ac_mode: 4,
     temp: 24,
     envtemp: 24,
+    drmode: 4,
 
     ac_heaterstatus: false,
     ac_indoorfanstatus: false,
@@ -199,9 +203,9 @@ export class electroluxACAccessory {
     setUpMsg = setUpMsg.concat(
       '\nExpose De-Beep             : ', this.platform.config.deBeep?.toString() ?? 'Not set');
     setUpMsg = setUpMsg.concat(
-      '\nExpose Fan Mode Switch      : ', this.platform.config.fanMode?.toString() ?? 'Not set');
+      '\nExpose Fan Mode Switch     : ', this.platform.config.fanMode?.toString() ?? 'Not set');
     setUpMsg = setUpMsg.concat(
-      '\nExpose Dry Mode Switch      : ', this.platform.config.dryMode?.toString() ?? 'Not set');
+      '\nExpose Dry Mode Switch     : ', this.platform.config.dryMode?.toString() ?? 'Not set');
 
     // dumps variables and optional switch config to console
     this.platform.log.info(setUpMsg);
@@ -403,6 +407,18 @@ export class electroluxACAccessory {
     }
 
 
+    if (this.platform.config.fanQuiet as boolean === true || this.swDefaults.swFanQuiet) {
+      this.swFanQuiet = this.accessory.getService('Fan Quiet') ||
+        this.accessory.addService(this.platform.Service.Switch, 'Fan Quiet', 'Fan Quiet')
+          .setCharacteristic(this.platform.Characteristic.ConfiguredName, 'Fan Quiet');
+      this.swFanQuiet.getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.handleSetFanQuiet.bind(this));
+    } else {
+      this.swFanQuiet = this.accessory.getService('Fan Quiet') || undefined;
+      if (this.swFanQuiet) {
+        this.accessory.removeService(this.swFanQuiet);
+      }
+    }
 
 
 
@@ -420,8 +436,7 @@ export class electroluxACAccessory {
     }, this.updateInterval);
 
     setInterval(async () => {
-      this.platform.log.info(this.accessory.displayName,
-        this.genLogMsg(await this.getState()));
+      this.platform.log.info(this.genLogMsg(await this.getState()));
     }, 1800000);
   }
 
@@ -453,14 +468,14 @@ export class electroluxACAccessory {
       TargetTemperature).updateValue(status.temp);
 
     this.fan.getCharacteristic(this.platform.Characteristic.
-      Active).updateValue(this.fromStatusIs(status, isAC.fanBlowing));
+      Active).updateValue(status.ac_indoorfanstatus);
 
     this.fan.getCharacteristic(this.platform.Characteristic.
       CurrentFanState).updateValue(this.fromStatusGet(status, getAC.fanCurrentState));
 
     // whether fan speed is auto or not
     this.fan.getCharacteristic(this.platform.Characteristic.
-      TargetFanState).updateValue(this.fromStatusGet(status, getAC.fanTargetState));
+      TargetFanState).updateValue(status.ac_mark === 0);
 
     this.fan.getCharacteristic(this.platform.Characteristic.
       SwingMode).updateValue(status.ac_vdir);
@@ -475,7 +490,7 @@ export class electroluxACAccessory {
 
     if (this.swAuto) {
       this.swAuto?.getCharacteristic(this.platform.Characteristic.
-        On).updateValue(this.fromStatusIs(status, isAC.autoOn, true));
+        On).updateValue(status.ac_pwr === 1 && status.ac_mode === acMode.AUTO && status.ac_mark === fanSpeed.AUTO);
     }
 
     if (this.swClean) {
@@ -490,22 +505,28 @@ export class electroluxACAccessory {
 
     if (this.swFanSwing) {
       this.swFanSwing.getCharacteristic(this.platform.Characteristic.
-        On).updateValue(this.fromStatusIs(status, isAC.fanSwingOn, true));
+        On).updateValue(status.ac_vdir === 1);
     }
 
     if (this.swQuietAuto) {
       this.swQuietAuto.getCharacteristic(this.platform.Characteristic.
-        On).updateValue(this.fromStatusIs(status, isAC.quietAutoOn, true));
+        On).updateValue(status.ac_pwr === 1 && status.ac_mode === acMode.AUTO && status.ac_mark === fanSpeed.QUIET);
     }
 
     if (this.swFanMode) {
       this.swFanMode.getCharacteristic(this.platform.Characteristic.
-        On).updateValue(this.fromStatusIs(status, isAC.fanModeOn, true));
+        On).updateValue(status.ac_mode === acMode.FAN);
     }
 
     if (this.swDryMode) {
       this.swDryMode.getCharacteristic(this.platform.Characteristic.
-        On).updateValue(this.fromStatusIs(status, isAC.dryModeOn, true));
+        On).updateValue(status.ac_mode === acMode.DRY);
+    // On).updateValue(this.fromStatusIs(status, isAC.dryModeOn, true));
+    }
+
+    if (this.swFanQuiet) {
+      this.swFanQuiet.getCharacteristic(this.platform.Characteristic.
+        On).updateValue(status.ac_mark === fanSpeed.QUIET);
     }
 
   }
@@ -516,20 +537,15 @@ export class electroluxACAccessory {
   private genLogMsg(status: ElectroluxState): string {
 
     return ''.concat(this.accessory.displayName, ' Status :',
-      ' \nAC Status : ', status.ac_pwr.toString(),
-      ',  AC Current State : ', this.fromStatusGet(status, getAC.currentState).toString(),
-      ',  AC Target State : ', this.fromStatusGet(status, getAC.targetState).toString(),
-      ' \nAC Mode : ', this.fromACModeGetModeName(status.ac_mode),
-      ',  Current Temp : ', status.envtemp.toString(),
-      ',  Target Temp : ', status.temp.toString(),
-      ' \nFan Current State : ', this.fromStatusGet(status, getAC.fanCurrentState).toString(),
-      ',  Fan Auto Speed : ', this.fromStatusGet(status, getAC.fanTargetState).toString(),
+      '\n On : ', status.ac_pwr.toString(),
+      ',  Mode : ', this.fromACModeGetModeName(status.ac_mode),
+      ',  Compressor : ', status.ac_compressorstatus.toString(),
+      ',  Drmode : ', status.drmode.toString(),
+      '\n Fan On : ', status.ac_indoorfanstatus.toString(),
       ',  Fan Speed : ', this.fromACMarkGetSpeedName(status.ac_mark),
-      ',  Fan Swing : ', this.acStateCache.ac_vdir.toString(),
-      ' \nAC Compressor on : ', status.ac_compressorstatus.toString(),
-      ',  AC Fan on : ', status.ac_indoorfanstatus.toString(),
-      ',  Self Clean : ', status.mldprf.toString(),
-      ',  LED : ', status.scrdisp.toString(),
+      ',  Swing : ', this.acStateCache.ac_vdir.toString(),
+      '\n Env Temp : ', status.envtemp.toString(),
+      ',  Set Temp : ', status.temp.toString(),
     );
   }
 
@@ -689,6 +705,7 @@ export class electroluxACAccessory {
       ac_mark: state.ac_mark,
       temp: state.temp,
       envtemp: state.envtemp,
+      drmode: state.drmode,
 
       // string here
       modelnumber: state.modelnumber,
@@ -741,13 +758,13 @@ export class electroluxACAccessory {
   // for the dedicated Fan Mode switch configurable in settings
   public async handleSetDryMode(value: CharacteristicValue): Promise<void> {
     if (value) {
-      this.platform.log.info('Setting AC to Fan Mode');
+      this.platform.log.info('Setting AC to Dry Mode');
       await this.setState({ ac_mode: 2 });
       if (this.accessory.context.deBeepState) {
         await this.setState({ scrdisp: 0 });
       }
     } else {
-      this.platform.log.info('Setting AC (via Fan Mode switch) Off');
+      this.platform.log.info('Setting AC (via Dry Mode switch) Off');
       await this.setState({ ac_pwr: 0 });
     }
   }
@@ -774,6 +791,12 @@ export class electroluxACAccessory {
   public async handleSetSwingModeSwitch(value: CharacteristicValue): Promise<void> {
     this.platform.log.info(' Setting Fan Swing : ', value);
     await this.setState({ ac_vdir: value as boolean ? 1 : 0 });
+  }
+
+  // this is for the dedicated switch, and Homekit gives a boolean request
+  public async handleSetFanQuiet(value: CharacteristicValue): Promise<void> {
+    this.platform.log.info(' Setting Fan Speed to Quiet : ', value);
+    await this.setState({ ac_mark: value as boolean ? 5 : 0 });
   }
 
   public async handleSetRotationSpeed(value: CharacteristicValue): Promise<void> {
@@ -850,91 +873,6 @@ export class electroluxACAccessory {
 
 
 
-
-  public fromStatusIs(status: ElectroluxState, which: isAC, returnBool?: boolean): boolean | number{
-    let response = 0;
-    switch (which) {
-      case isAC.active: {
-        if (status.ac_pwr === 1) {
-          response = 1;
-        }
-        break;
-      }
-
-      case isAC.fanBlowing: {
-        if (status.ac_indoorfanstatus) {
-          response = 1;
-        }
-        break;
-      }
-
-      case isAC.autoOn: {
-        if (status.ac_mode === acMode.AUTO
-          && status.ac_mark === fanSpeed.AUTO
-          && status.ac_pwr === 1) {
-          response = 1;
-        }
-        break;
-      }
-      case isAC.quietAutoOn: {
-        if (status.ac_mode === acMode.AUTO
-          && status.ac_mark === fanSpeed.QUIET
-          && status.ac_pwr === 1) {
-          response = 1;
-        }
-        break;
-      }
-      case isAC.fanModeOn: {
-        if (status.ac_mode === acMode.FAN
-          && status.ac_pwr === 1) {
-          response = 1;
-        }
-        break;
-      }
-      case isAC.dryModeOn: {
-        if (status.ac_mode === acMode.DRY
-          && status.ac_pwr === 1) {
-          response = 1;
-        }
-        break;
-      }
-      case isAC.fanSwingOn: {
-        if (status.ac_vdir === this.platform.Characteristic.SwingMode.SWING_ENABLED) {
-          response = 1;
-        }
-        break;
-      }
-      case isAC.displayOn: {
-        if (status.scrdisp) {
-          response = 1;
-        }
-        break;
-      }
-      case isAC.fanSpeedAuto: {
-        if (status.ac_mark === 0) {
-          response = 1;
-        }
-        break;
-      }
-    }
-
-    if (returnBool) {
-      if (response === 1) {
-        return true;
-      } else {
-        return false;
-      }
-    }
-
-    return response;
-  }
-
-
-
-
-
-
-
   public fromStatusGet(status: ElectroluxState, which: getAC): number{
     let response = 0;
     switch (which) {
@@ -945,6 +883,10 @@ export class electroluxACAccessory {
         } else if (status.ac_mode === acMode.COOL || status.ac_mode === acMode.DRY) {
           response = this.platform.Characteristic.CurrentHeatingCoolingState.COOL;
         } else if (status.ac_mode === acMode.HEAT || status.ac_mode === acMode.HEAT_8) {
+          response = this.platform.Characteristic.CurrentHeatingCoolingState.HEAT;
+        } else if (status.ac_mode === acMode.AUTO && status.drmode === 4) {
+          response = this.platform.Characteristic.CurrentHeatingCoolingState.COOL;
+        } else if (status.ac_mode === acMode.AUTO && status.drmode === 0) {
           response = this.platform.Characteristic.CurrentHeatingCoolingState.HEAT;
         } else {
           response = this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
@@ -974,13 +916,6 @@ export class electroluxACAccessory {
           response = this.platform.Characteristic.CurrentFanState.IDLE;
         } else {
           response = this.platform.Characteristic.CurrentFanState.INACTIVE;
-        }
-        break;
-      }
-
-      case getAC.fanTargetState: {
-        if (status.ac_mark === 0) {
-          response = this.platform.Characteristic.TargetFanState.AUTO;
         }
         break;
       }
